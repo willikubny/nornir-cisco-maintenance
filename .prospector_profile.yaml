@@ -1,0 +1,11 @@
+---
+doc-warnings: false
+
+mccabe:
+  disable:
+    - MC0001  # is too complex
+
+pycodestyle:
+  full: true
+  disable:
+    - E722  # do not use bare 'except'

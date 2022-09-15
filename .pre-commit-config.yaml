@@ -1,0 +1,48 @@
+---
+# yamllint disable rule:line-length
+
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+# These pre-commit hooks use the makefile of these repo to execute the same
+# checks which are also used during development
+
+repos:
+  - repo: local
+    hooks:
+      - id: black
+        name: Python auto-formating with black (Coding consistancy)
+        entry: make
+        args: ["black"]
+        language: system
+        pass_filenames: false
+      - id: yamllint
+        name: YAML linting with yamllint (Coding standard)
+        entry: make
+        args: ["yamllint"]
+        language: system
+        pass_filenames: false
+      - id: pylint
+        name: Python linting with pylint (Coding standard and bad code smell)
+        entry: make
+        args: ["pylint"]
+        language: system
+        pass_filenames: false
+      - id: prospector
+        name: Python linting with prospector (Coding standard and bad code smell)
+        entry: make
+        args: ["prospector"]
+        language: system
+        pass_filenames: false
+      - id: bandit
+        name: Python linting with bandit (Security)
+        entry: make
+        args: ["bandit"]
+        language: system
+        pass_filenames: false
+      - id: vulture
+        name: Python dead code analysis with vulture (Cleaning)
+        entry: make
+        args: ["vulture"]
+        language: system
+        pass_filenames: false

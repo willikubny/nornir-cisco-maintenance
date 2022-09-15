@@ -1,0 +1,11 @@
+pre-commit
+cisco-support
+nornir-maze
+pandas
+openpyxl
+pyfiglet
+black
+pylint
+prospector
+bandit
+vulture
