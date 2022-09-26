@@ -6,14 +6,21 @@ Docstring needs to be changed
 import os
 import sys
 import json
-from pyfiglet import figlet_format
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from cisco_support import SNI, EoX
-from cisco_support.utils import getToken as cisco_support_get_token
+from pyfiglet import figlet_format
+from xlsxwriter.utility import xl_col_to_name
 from nornir import InitNornir
 from nornir_scrapli.tasks import send_command
 from nornir_maze.cisco_support.utils import init_args
+from nornir_maze.cisco_support.api_calls import (
+    cisco_support_check_authentication,
+    get_sni_owner_coverage_by_serial_number,
+    get_sni_coverage_summary_by_serial_numbers,
+    get_eox_by_serial_numbers,
+    verify_cisco_support_api_data,
+)
 from nornir_maze.utils import (
     print_task_title,
     print_task_name,
@@ -34,228 +41,52 @@ __email__ = "willi.kubny@kyndryl.com"
 __status__ = "Production"
 
 
-def cisco_support_check_authentication(api_client_creds, verbose=False):
-    """
-    This function checks to Cisco support API authentication by generating an bearer access token. In case
-    of an invalid API client key or secret a error message is printed and the script exits.
-    """
-    task_name = "CISCO-API check OAuth2 client credentials grant flow"
-    print_task_name(text=task_name)
+#### Excel Report Constants ##################################################################################
 
-    # Create two variables for the Cisco support API key and secret
-    client_id, client_secret = api_client_creds
+# Change the constants below to adapt the Excel report creation to your needs
 
-    try:
-        # Try to generate an barer access token
-        token = cisco_support_get_token(client_id, client_secret, verify=None, proxies=None)
-
-        print(task_info(text=task_name, changed="False"))
-        print("'Bearer access token generation' -> CISCOAPIResult <Success: True>")
-        if verbose:
-            print(f"\n-> Bearer token: {token}\n")
-
-    except KeyError:
-        ansi_red_bold = "\033[1m\u001b[31m"
-        ansi_reset = "\033[0m"
-        print(task_error(text=task_name, changed="False"))
-        print("'Bearer access token generation' -> CISCOAPIResult <Success: False>")
-        print("\n\U0001f4a5 ALERT: INVALID API CREDENTIALS PROVIDED! \U0001f4a5")
-        print(f"{ansi_red_bold}-> Verify the API client key and secret{ansi_reset}\n")
-        sys.exit(1)
-
-
-def sni_get_owner_coverage_by_serial_number(serial_dict, api_client_creds, verbose=False):
-    """
-    This function takes the serial_dict which contains all serial numbers and the Cisco support API creds to
-    run get the owner coverage by serial number with the cisco-support library. The printout is in Nornir
-    style, but there is no use of Nornir. The result of each serial will be added with a new key to the dict.
-    The function returns the updated serials dict. The format of the serials_dict need to be as below.
-    "<serial>": {
-        "host": "<hostname>",
-        ...
-    },
-    """
-    print_task_name(text="CISCO-API get owner coverage status by serial number")
-
-    client_key, client_secret = api_client_creds
-
-    sni = SNI(client_key, client_secret)
-
-    owner_coverage_status = sni.getOwnerCoverageStatusBySerialNumbers(serial_dict.keys())
-
-    for item in owner_coverage_status["serial_numbers"]:
-        sr_no = item["sr_no"]
-        serial_dict[sr_no]["SNIgetOwnerCoverageStatusBySerialNumbers"] = item
-        print(task_host(host=f"HOST: {serial_dict[sr_no]['host']} / SN: {sr_no}", changed="False"))
-
-        # Verify if the serial number is associated with the CCO ID
-        if "YES" in item["sr_no_owner"]:
-            print(task_info(text="Verify provided CCO ID", changed="False"))
-            print("'Is associated to the provided CCO ID' -> CISCOAPIResult <Success: True>")
-        else:
-            print(task_error(text="Verify provided CCO ID", changed="False"))
-            print("'Is not associated to the provided CCO ID' -> CISCOAPIResult <Success: False>")
-
-        # Verify if the serial is covered by a service contract
-        if "YES" in item["is_covered"]:
-            print(task_info(text="Verify service contract", changed="False"))
-            print("'Is covered by a service contract' -> CISCOAPIResult <Success: True>")
-            # Verify the end date of the service contract coverage
-            if item["coverage_end_date"]:
-                print(task_info(text="Verify service contract end date", changed="False"))
-                print(f"'Coverage end date is {item['coverage_end_date']}' -> CISCOAPIResult <Success: True>")
-            else:
-                print(task_error(text="Verify service contract end date", changed="False"))
-                print("'Coverage end date not available' -> CISCOAPIResult <Success: False>")
-        else:
-            print(task_error(text="Verify service contract", changed="False"))
-            print("'Is not covered by a service contract' -> CISCOAPIResult <Success: False>")
-
-        if verbose:
-            print("\n" + json.dumps(item, indent=4))
-
-    return serial_dict
-
-
-def sni_get_coverage_summary_by_serial_numbers(serial_dict, api_client_creds, verbose=False):
-    """
-    This function takes the serial_dict which contains all serial numbers and the Cisco support API creds to
-    run get the coverage summary by serial number with the cisco-support library. The printout is in Nornir
-    style, but there is no use of Nornir. The result of each serial will be added with a new key to the dict.
-    The function returns the updated serials dict. The format of the serials_dict need to be as below.
-    "<serial>": {
-        "host": "<hostname>",
-        ...
-    },
-    """
-    task_text = "CISCO-API get coverage summary data by serial number"
-    print_task_name(text=task_text)
-
-    client_key, client_secret = api_client_creds
-
-    sni = SNI(client_key, client_secret)
-
-    coverage_summary = sni.getCoverageSummaryBySerialNumbers(serial_dict.keys())
-
-    for item in coverage_summary["serial_numbers"]:
-        sr_no = item["sr_no"]
-        serial_dict[sr_no]["SNIgetCoverageSummaryBySerialNumbers"] = item
-        print(task_host(host=f"HOST: {serial_dict[sr_no]['host']} / SN: {sr_no}", changed="False"))
-
-        if "ErrorResponse" in item:
-            error_response = item["ErrorResponse"]["APIError"]
-            print(task_error(text=task_text, changed="False"))
-            print("'Get SNI data' -> CISCOAPIResult <Success: False>")
-            print(f"\n-> {error_response['ErrorDescription']} ({error_response['SuggestedAction']})\n")
-        else:
-            print(task_info(text=task_text, changed="False"))
-            print("'Get SNI data' -> CISCOAPIResult <Success: True>")
-            print(f"\n-> Orderable pid: {item['orderable_pid_list'][0]['orderable_pid']}")
-            print(f"-> Customer name: {item['contract_site_customer_name']}")
-            print(f"-> Customer address: {item['contract_site_address1']}")
-            print(f"-> Customer city: {item['contract_site_city']}")
-            print(f"-> Customer province: {item['contract_site_state_province']}")
-            print(f"-> Customer country: {item['contract_site_country']}")
-            print(f"-> Is covered by service contract: {item['is_covered']}")
-            print(f"-> Covered product line end date: {item['covered_product_line_end_date']}")
-            print(f"-> Service contract number: {item['service_contract_number']}")
-            print(f"-> Service contract description: {item['service_line_descr']}")
-            print(f"-> Warranty end date: {item['warranty_end_date']}")
-            print(f"-> Warranty type: {item['warranty_type']}\n")
-
-        if verbose:
-            print(json.dumps(item, indent=4))
-
-    return serial_dict
-
-
-def eox_by_serial_numbers(serial_dict, api_client_creds, verbose=False):
-    """
-    This function takes the serial_dict which contains all serial numbers and the Cisco support API creds to
-    run get the end of life data by serial number with the cisco-support library. The printout is in Nornir
-    style, but there is no use of Nornir. The result of each serial will be added with a new key to the dict.
-    The function returns the updated serials dict. The format of the serials_dict need to be as below.
-    "<serial>": {
-        "host": "<hostname>",
-        ...
-    },
-    """
-    task_text = "CISCO-API get EoX data by serial number"
-    print_task_name(text=task_text)
-
-    client_key, client_secret = api_client_creds
-
-    eox = EoX(client_key, client_secret)
-
-    end_of_life = eox.getBySerialNumbers(serial_dict.keys())
-
-    for item in end_of_life["EOXRecord"]:
-        sr_no = item["EOXInputValue"]
-        serial_dict[sr_no]["EOXgetBySerialNumbers"] = item
-        print(task_host(host=f"HOST: {serial_dict[sr_no]['host']} / SN: {sr_no}", changed="False"))
-
-        if "EOXError" in item:
-            if "No product IDs were found" in item["EOXError"]["ErrorDescription"]:
-                print(task_error(text=task_text, changed="False"))
-                print("'Get EoX data' -> CISCOAPIResult <Success: False>")
-                print(f"\n-> {item['EOXError']['ErrorDescription']} (Serial number does not exist)\n")
-            elif "EOX information does not exist" in item["EOXError"]["ErrorDescription"]:
-                print(task_info(text=task_text, changed="False"))
-                print("'Get EoX data' -> CISCOAPIResult <Success: False>")
-                print(f"\n-> {item['EOXError']['ErrorDescription']}\n")
-        else:
-            print(task_info(text=task_text, changed="False"))
-            print(
-                f"'Get EoX data (Update timestamp {item['UpdatedTimeStamp']['value']})' "
-                + "-> CISCOAPIResult <Success: True>"
-            )
-            print(f"\n-> EoL product ID: {item['EOLProductID']}")
-            print(f"-> Product ID description: {item['ProductIDDescription']}")
-            print(f"-> EoL announcement date: {item['EOXExternalAnnouncementDate']['value']}")
-            print(f"-> End of sale date: {item['EndOfSaleDate']['value']}")
-            print(f"-> End of maintenance release: {item['EndOfSWMaintenanceReleases']['value']}")
-            print(f"-> End of vulnerability support: {item['EndOfSecurityVulSupportDate']['value']}")
-            print(f"-> Last day of support: {item['LastDateOfSupport']['value']}\n")
-
-        if verbose:
-            print(json.dumps(item, indent=4))
-
-    return serial_dict
-
-
-def verify_cisco_support_api_data(serials_dict, verbose=False):
-    """
-    This function verifies the serials_dict which has been filled with data by various functions of these
-    module like eox_by_serial_numbers, sni_get_coverage_summary_by_serial_numbers, etc. and verifies that
-    there are no invalid serial numbers. In case of invalid serial numbers, the script quits with an error
-    message.
-    """
-    failed = False
-    task_text = "Verify Cisco support API data"
-    print_task_name(text=task_text)
-
-    # Verify that the serials_dict dictionary contains no wrong serial numbers
-    for value in iterate_all(iterable=serials_dict, returned="value"):
-        if value is not None:
-            if "No product IDs were found" in value or "No records found" in value:
-                failed = True
-                break
-
-    if failed:
-        print(task_error(text=task_text, changed="False"))
-        print(f"'{task_text}' -> Result <Success: False>")
-        print(
-            "\n\U0001f4a5 ALERT: INVALID SERIAL NUMBERS PROVIDED! \U0001f4a5\n"
-            "\033[1m\u001b[31m"
-            "-> Analyse the output for failed tasks to identify the invalid serial numbers\n"
-            "-> Run the script with valid serial numbers only again\033[0m\n\n"
-        )
-        sys.exit(1)
-
-    print(task_info(text=task_text, changed="False"))
-    print(f"'{task_text}' -> Result <Success: True>")
-    if verbose:
-        print("\n" + json.dumps(serials_dict, indent=4))
+# Specify all settings for the title row formatting
+TITLE_FONT_NAME = "Arial"
+TITLE_FONT_SIZE = 20
+TITLE_FONT_COLOR = "#FFFFFF"
+TITLE_BACKGROUND_COLOR = "#FF452C"
+# Specify all settings for the title logo (logo placement is in merged cell A1-A3)
+TITLE_LOGO = "reports/src/kyndryl_logo.png"
+TITLE_LOGO_X_SCALE = 1.0
+TITLE_LOGO_Y_SCALE = 1.2
+TITLE_LOGO_X_OFFSET = 80
+TITLE_LOGO_Y_OFFSET = 18
+# Specify the title text (title text starts from cell A4)
+TITLE_TEXT = "Cisco Maintenance Report"
+# Specify the Excel table formatting style
+EXCEL_TABLE_STYLE = "Table Style Medium 8"
+# Specify the default table text settings
+TABLE_DEFAULT_FONT_NAME = "Arial"
+TABLE_DEFAULT_FONT_SIZE = 12
+# Get the current date in the format YYYY-mm-dd
+DATE_TODADY = datetime.today().date()
+# Specify the grace period in days where a date should be flaged orange before expire and is flaged red
+DATE_GRACE_PERIOD = 90
+# Specify the dict keys and their order for the pandas dataframe -> Key order == excel colums order
+# fmt: off
+EXCEL_COLUMN_ORDER = [
+    "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "contract_site_customer_name",
+    "contract_site_address1", "contract_site_city", "contract_site_state_province",
+    "contract_site_country", "covered_product_line_end_date", "service_contract_number",
+    "service_line_descr", "warranty_end_date", "warranty_type", "warranty_type_description",
+    "item_description", "item_type", "orderable_pid", "ErrorDescription", "ErrorDataType",
+    "ErrorDataValue", "EOXExternalAnnouncementDate", "EndOfSaleDate", "EndOfSWMaintenanceReleases",
+    "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal", "LastDateOfSupport",
+    "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation", "MigrationProductId",
+    "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
+]
+# Specify all columns with a date
+DATE_COLUMN_LIST = [
+    "coverage_end_date", "covered_product_line_end_date", "warranty_end_date", "EOXExternalAnnouncementDate",
+    "EndOfSaleDate", "EndOfSWMaintenanceReleases", "EndOfRoutineFailureAnalysisDate",
+    "EndOfServiceContractRenewal", "LastDateOfSupport", "EndOfSvcAttachDate",
+]
+# fmt: on
 
 
 def init_nornir(args):
@@ -297,7 +128,7 @@ def init_nornir(args):
 def prepare_nornir_data(nr_obj, args):
     """
     This function use Nornir to gather and prepare all serial numbers and returns the serials dictionary and
-    the Cisco support API credentials from the Nornir inventory.
+    the report_file string for the destination file of the report.
     """
     task_text = "NORNIR prepare serial numbers"
     print_task_name(text=task_text)
@@ -332,20 +163,18 @@ def prepare_nornir_data(nr_obj, args):
                 # Update the outside loop serials dict with the inside loop serial dict
                 serials.update(serial)
 
-    # Prepare the Cisco support API key and the secret in a tuple
-    api_client_creds = (
-        nr_obj.inventory.defaults.data["cisco_support"]["env_client_key"],
-        nr_obj.inventory.defaults.data["cisco_support"]["env_client_secret"],
-    )
+    # Get the report_file string from the Nornir inventory for later destination file constructing
+    report_file = nr_obj.inventory.defaults.data["cisco_support"]["cisco_maintenance_report_file"]
 
-    return serials, api_client_creds
+    # return the serials dict and the report_file string variable
+    return serials, report_file
 
 
 def prepare_static_data(args):
     """
     This function prepare all static serial numbers which can be applied with the --serials ArgParse argument
-    or within an Excel document. It returns the serials dictionary and the Cisco support API credentials from
-    --api_key and --api_secret ArgParse arguments.
+    or within an Excel document. It returns the serials dictionary and and the report_file string for the
+    destination file of the report.
     """
     # pylint: disable=invalid-name
 
@@ -358,6 +187,9 @@ def prepare_static_data(args):
 
     # If the --serials argument is set, verify that the tag has hosts assigned to
     if hasattr(args, "serials"):
+        # Create the report_file string for later destination file constructing
+        report_file = "reports/cisco_maintenance_report_YYYY-mm-dd.xlsx"
+
         print(task_info(text=task_text, changed="False"))
         print(f"'{task_text}' -> ArgparseResult <Success: True>")
 
@@ -384,24 +216,26 @@ def prepare_static_data(args):
                 f"\033[1m\u001b[31m-> Excel file {args.excel} not found\n"
                 "-> Verify the file path and the --excel argument\033[0m\n\n"
             )
-            sys.exit()
+            sys.exit(1)
+
+        # Create the report_file string for later destination file constructing
+        report_file = args.excel
 
         print(task_info(text=task_text, changed="False"))
         print(f"'{task_text}' -> ArgparseResult <Success: True>")
 
-        # Read the excel file into a pandas dataframe
-        df = pd.read_excel(rf"{args.excel}")
+        # Read the excel file into a pandas dataframe -> Row 0 is the title row
+        df = pd.read_excel(rf"{args.excel}", skiprows=[0])
 
-        # Make all serial numbers and hostnames written in uppercase letters
-        df.SERIAL_NUMBER = df.SERIAL_NUMBER.str.upper()
-        df.HOSTNAME = df.HOSTNAME.str.upper()
+        # Make all serial numbers written in uppercase letters
+        df.sr_no = df.sr_no.str.upper()
 
         # The first fillna will replace all of (None, NAT, np.nan, etc) with Numpy's NaN, then replace
         # Numpy's NaN with python's None
         df = df.fillna(np.nan).replace([np.nan], [None])
 
         # Add all serials and hostnames from pandas dataframe to the serials dict
-        for sr_no, host in zip(df.SERIAL_NUMBER, df.HOSTNAME):
+        for sr_no, host in zip(df.sr_no, df.host):
             serials[sr_no] = {}
             serials[sr_no]["host"] = host
 
@@ -420,16 +254,431 @@ def prepare_static_data(args):
         )
         sys.exit(1)
 
-    # Prepare the Cisco support API key and the secret in a tuple
-    api_client_creds = (args.api_key, args.api_secret)
+    # return the serials dict and the report_file string variable
+    return serials, report_file
 
-    return serials, api_client_creds
+
+def prepare_report_data_host(serials_dict):
+    """
+    This function takes the serials_dict which has been filled with data by various functions and creates a
+    host dict with the key "host" and a list of all hostnames as the value. The key will be the pandas
+    dataframe column name and the value which is a list will be the colums cell content. The host dict will
+    be returned.
+    """
+    # Define dict key for the hostnames
+    host = {}
+    host["host"] = []
+    # Add all hostnames to the list
+    for item in serials_dict.values():
+        host["host"].append(item["host"])
+
+    return host
+
+
+def prepare_report_data_owner_coverage_by_serial_number(serials_dict):
+    """
+    This function takes the serials_dict which has been filled with data by various functions and creates a
+    owner_coverage_status with key-value pairs. The key will be the pandas dataframe column name and the
+    value which is a list will be the colums cell content. The host dict will be returned.
+    """
+    # pylint: disable=consider-using-dict-items
+
+    # Define dict keys for SNIgetOwnerCoverageStatusBySerialNumbers
+    owner_coverage_status = {}
+    owner_coverage_status["sr_no_owner"] = []
+    owner_coverage_status["coverage_end_date"] = []
+    # Append the SNIgetOwnerCoverageStatusBySerialNumbers values for each defined dict key
+    for header in owner_coverage_status:
+        for sr_no in serials_dict.values():
+            success = False
+            for key, value in sr_no["SNIgetOwnerCoverageStatusBySerialNumbers"].items():
+                if header == key:
+                    if key in owner_coverage_status:
+                        owner_coverage_status[key].append(value)
+                        success = True
+        # If nothing was appended to the owner_coverage_status dict, append an empty string
+        if not success:
+            owner_coverage_status[header].append("")
+
+    return owner_coverage_status
+
+
+def prepare_report_data_coverage_summary_by_serial_numbers(serials_dict):
+    """
+    This function takes the serials_dict which has been filled with data by various functions and creates a
+    coverage_summary with key-value pairs. The key will be the pandas dataframe column name and the value
+    which is a list will be the colums cell content. The host dict will be returned.
+    """
+    # pylint: disable=consider-using-dict-items
+
+    # Define dict keys for SNIgetCoverageSummaryBySerialNumbers
+    coverage_summary = {}
+    coverage_summary["sr_no"] = []
+    coverage_summary["is_covered"] = []
+    coverage_summary["contract_site_customer_name"] = []
+    coverage_summary["contract_site_address1"] = []
+    coverage_summary["contract_site_city"] = []
+    coverage_summary["contract_site_state_province"] = []
+    coverage_summary["contract_site_country"] = []
+    coverage_summary["covered_product_line_end_date"] = []
+    coverage_summary["service_contract_number"] = []
+    coverage_summary["service_line_descr"] = []
+    coverage_summary["warranty_end_date"] = []
+    coverage_summary["warranty_type"] = []
+    coverage_summary["warranty_type_description"] = []
+    coverage_summary["item_description"] = []
+    coverage_summary["item_type"] = []
+    coverage_summary["orderable_pid"] = []
+    # Append the SNIgetCoverageSummaryBySerialNumbers values for each defined dict key
+    for header in coverage_summary:
+        for sr_no in serials_dict.values():
+            success = False
+            # Append all general coverage details
+            for key, value in sr_no["SNIgetCoverageSummaryBySerialNumbers"].items():
+                if header == key:
+                    if key in coverage_summary:
+                        coverage_summary[key].append(value)
+                        success = True
+            # Append all the orderable pid details
+            for key, value in sr_no["SNIgetCoverageSummaryBySerialNumbers"]["orderable_pid_list"][0].items():
+                if header == key:
+                    if key in coverage_summary:
+                        coverage_summary[key].append(value)
+                        success = True
+            # If nothing was appended to the coverage_summary dict, append an empty string
+            if not success:
+                coverage_summary[header].append("")
+
+    return coverage_summary
+
+
+def prepare_report_data_eox_by_serial_numbers(serials_dict):
+    """
+    This function takes the serials_dict which has been filled with data by various functions and creates a
+    end_of_life with key-value pairs. The key will be the pandas dataframe column name and the value which is
+    a list will be the colums cell content. The host dict will be returned.
+    """
+    # pylint: disable=too-many-nested-blocks,consider-using-dict-items
+
+    # Define dict keys for EOXgetBySerialNumbers
+    end_of_life = {}
+    end_of_life["EOXExternalAnnouncementDate"] = []
+    end_of_life["EndOfSaleDate"] = []
+    end_of_life["EndOfSWMaintenanceReleases"] = []
+    end_of_life["EndOfSecurityVulSupportDate"] = []
+    end_of_life["EndOfRoutineFailureAnalysisDate"] = []
+    end_of_life["EndOfServiceContractRenewal"] = []
+    end_of_life["LastDateOfSupport"] = []
+    end_of_life["EndOfSvcAttachDate"] = []
+    end_of_life["UpdatedTimeStamp"] = []
+    end_of_life["MigrationInformation"] = []
+    end_of_life["MigrationProductId"] = []
+    end_of_life["MigrationProductName"] = []
+    end_of_life["MigrationStrategy"] = []
+    end_of_life["MigrationProductInfoURL"] = []
+    end_of_life["ErrorDescription"] = []
+    end_of_life["ErrorDataType"] = []
+    end_of_life["ErrorDataValue"] = []
+
+    # Append the EOXgetBySerialNumbers values for each defined dict key
+    for header in end_of_life:
+        for sr_no in serials_dict.values():
+            success = False
+
+            # Append all end of life dates
+            for key, value in sr_no["EOXgetBySerialNumbers"].items():
+                if header == key:
+                    if isinstance(value, dict):
+                        if "value" in value:
+                            end_of_life[key].append(value["value"])
+                            success = True
+            # Append all migration details
+            for key, value in sr_no["EOXgetBySerialNumbers"]["EOXMigrationDetails"].items():
+                if header == key:
+                    if key in end_of_life:
+                        end_of_life[key].append(value)
+                        success = True
+            # If EOXError exists append the error reason, else append an empty string
+            if "EOXError" in sr_no["EOXgetBySerialNumbers"]:
+                for key, value in sr_no["EOXgetBySerialNumbers"]["EOXError"].items():
+                    if header == key:
+                        if key in end_of_life:
+                            end_of_life[key].append(value)
+                            success = True
+
+            # If nothing was appended to the end_of_life dict, append an empty string
+            if not success:
+                end_of_life[header].append("")
+
+    return end_of_life
+
+
+def get_pandas_column_width(df):  # pylint: disable=invalid-name
+    """
+    Helper function to get the width of each pandas dataframe column.
+    """
+    # Find the maximum length of the index column
+    idx_max = max([len(str(s)) for s in df.index.values] + [len(str(df.index.name))])
+
+    # Concatenate this to the max of the lengths of column name and its values for each column, left to right
+    return [idx_max] + [max([len(str(s)) for s in df[col].values] + [len(col)]) for col in df.columns]
+
+
+def construct_report_filename(report_file):
+    """
+    Construct the new destination path and filename from the report_file string variable. The report_file
+    string can contain as much subfolder as needed. The filename must have a date at the end in the formart
+    _dd-mm-yyyy, _yyyy-mm-dd, _dd_mm_yyyy or _yyyy_mm_dd which are 11 characters that will be sliced away and
+    the current date will be added. The function returns the new constructed destination file.
+    """
+    # Create some variables to construct the destination path and filename
+    # Get the path and the filename from file variable string
+    path, filename = os.path.split(report_file)
+
+    # Create the path folder if it don't exists
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    # Get the filename and the extension from the filename variable
+    filename, file_extension = os.path.splitext(filename)
+
+    # Slice the date away from the filename
+    # Works for various date combinations _dd-mm-yyyy or _yyyy-mm-dd or _dd_mm_yyyy or _yyyy_mm_dd
+    # Slicing from the end will ensure that you extract the date no matter what the name is and how long it is
+    filename = filename[:-11]
+
+    # Destination filename
+    report_file = f"{path}/{filename}_{DATE_TODADY}{file_extension}"
+
+    print(task_info(text="PYTHON construct destination file", changed="False"))
+    print("'PYTHON construct destination file' -> PythonResult <Success: True>")
+    print(f"\n-> Constructed {report_file}\n")
+
+    return report_file
+
+
+def create_pandas_df_for_report(serials_dict, verbose=False):
+    """
+    Prepare the report data and create a pandas dataframe. The pandas dataframe will be returned
+    """
+    # pylint: disable=invalid-name
+
+    print_task_name(text="PYTHON prepare report data")
+
+    # Prepare the needed data for the report from the serials dict. The serials dict contains all data that
+    # the Cisco support API sent. These functions return a dictionary with the needed data only
+    host = prepare_report_data_host(serials_dict=serials_dict)
+    owner_coverage_status = prepare_report_data_owner_coverage_by_serial_number(serials_dict=serials_dict)
+    coverage_summary = prepare_report_data_coverage_summary_by_serial_numbers(serials_dict=serials_dict)
+    end_of_life = prepare_report_data_eox_by_serial_numbers(serials_dict=serials_dict)
+
+    # Create an empty dict and append the previous dicts to create later the pandas dataframe
+    report_data = {}
+    report_data.update(**host, **owner_coverage_status, **coverage_summary, **end_of_life)
+
+    print(task_info(text="PYTHON prepare report data dict", changed="False"))
+    print("'PYTHON prepare report data dict' -> PythonResult <Success: True>")
+    if verbose:
+        print("\n" + json.dumps(report_data, indent=4))
+
+    # Reorder the data dict according to the key_order list -> This needs Python >= 3.6
+    report_data = {key: report_data[key] for key in EXCEL_COLUMN_ORDER}
+
+    print(task_info(text="PYTHON order report data dict", changed="False"))
+    print("'PYTHON order report data dict' -> PythonResult <Success: True>")
+    if verbose:
+        print("\n" + json.dumps(report_data, indent=4))
+
+    # Create a Pandas dataframe for the data dict
+    df = pd.DataFrame(report_data)
+
+    # Format each column in the list to a pandas date type for later conditional formatting
+    for column in DATE_COLUMN_LIST:
+        df[column] = pd.to_datetime(df[column], format="%Y-%m-%d")
+
+    print(task_info(text="PYTHON create pandas dataframe from dict", changed="False"))
+    print("'PANDAS create dataframe' -> PandasResult <Success: True>")
+    if verbose:
+        print(df)
+
+    return df
+
+
+def generate_cisco_maintenance_report(report_file, df):
+    """
+    Generate the Cisco Maintenance report Excel file specified by the report_file with the pandas dataframe.
+    The function returns None, but saves the Excel file to the local disk.
+    """
+    # pylint: disable=invalid-name,too-many-locals
+
+    #### Create the xlsx writer, workbook and worksheet objects ##############################################
+
+    # Create a Pandas excel writer using XlsxWriter as the engine.
+    writer = pd.ExcelWriter(  # pylint: disable=abstract-class-instantiated
+        report_file, engine="xlsxwriter", date_format="yyyy-mm-dd", datetime_format="yyyy-mm-dd"
+    )
+
+    # Write the dataframe data to XlsxWriter. Turn off the default header and index and skip one row to allow
+    # us to insert a user defined header.
+    df.to_excel(writer, sheet_name="Cisco_Maintenance_Report", startrow=2, header=False, index=False)
+
+    # Get the xlsxwriter workbook and worksheet objects.
+    workbook = writer.book  # pylint: disable=no-member
+    worksheet = writer.sheets["Cisco_Maintenance_Report"]
+
+    # Default cell format to size 10 and font type to Arial
+    workbook.formats[0].set_font_size(TABLE_DEFAULT_FONT_SIZE)
+    workbook.formats[0].set_font_name(TABLE_DEFAULT_FONT_NAME)
+
+    # Get the dimensions of the dataframe.
+    (max_row, max_col) = df.shape
+    # Max_row + 2 because the first two rows are used for title and header
+    max_row = max_row + 2
+    # Max_com -1 otherwise would be one column to much
+    max_col = max_col - 1
+
+    print(task_info(text="PYTHON create pandas writer object using XlsxWriter engine", changed="False"))
+    print("'PYTHON create pandas writer object using XlsxWriter engine' -> PythonResult <Success: True>")
+
+    #### Create the top title row ############################################################################
+
+    # Set the top row height according to the image
+    worksheet.set_row(0, 60)
+    # Create a format to use for the merged top row
+    title_format = workbook.add_format(
+        {
+            "font_name": TITLE_FONT_NAME,
+            "font_size": TITLE_FONT_SIZE,
+            "font_color": TITLE_FONT_COLOR,
+            "align": "left",
+            "valign": "vcenter",
+            "bold": 1,
+            "bottom": 1,
+            "bg_color": TITLE_BACKGROUND_COLOR,
+        }
+    )
+    # Merge the first three cells in the top row to insert a logo
+    worksheet.merge_range(0, 0, 0, 2, None, title_format)
+    # Insert a logo to the top row
+    worksheet.insert_image(
+        "A1",
+        TITLE_LOGO,
+        {
+            "x_scale": TITLE_LOGO_X_SCALE,
+            "y_scale": TITLE_LOGO_Y_SCALE,
+            "x_offset": TITLE_LOGO_X_OFFSET,
+            "y_offset": TITLE_LOGO_Y_OFFSET,
+        },
+    )
+    # Merge from the cell 4 to the max_col and write a title
+    title_text = f"{TITLE_TEXT} (generated by {os.path.basename(__file__)})"
+    worksheet.merge_range(0, 3, 0, max_col, title_text, title_format)
+
+    print(task_info(text="PYTHON create XlsxWriter title row", changed="False"))
+    print("'PYTHON create XlsxWriter title row' -> PythonResult <Success: True>")
+
+    ### Create a Excel table structure and add the Pandas dataframe
+
+    # Create a list of column headers, to use in add_table().
+    column_settings = [{"header": column} for column in df.columns]
+
+    # Add the Excel table structure. Pandas will add the data.
+    # fmt: off
+    worksheet.add_table(1, 0, max_row - 1, max_col,
+        {
+            "columns": column_settings,
+            "style": EXCEL_TABLE_STYLE,
+        },
+    )
+    # fmt: on
+
+    # Auto-adjust each column width -> +3 on the width makes space for the filter icon
+    for index, width in enumerate(get_pandas_column_width(df)):
+        worksheet.set_column(index, index - 1, width + 3)
+
+    print(task_info(text="PYTHON create XlsxWriter table and add pandas dataframe", changed="False"))
+    print("'PYTHON create XlsxWriter table and add pandas dataframe' -> PythonResult <Success: True>")
+
+    #### Create conditional formating ########################################################################
+
+    # Create a red background format for the conditional formatting
+    red_format = workbook.add_format({"bg_color": "#C0504D"})
+    # Create a orange background format for the conditional formatting
+    orange_format = workbook.add_format({"bg_color": "#F79646"})
+    # Create a green background format for the conditional formatting
+    green_format = workbook.add_format({"bg_color": "#9BBB59"})
+
+    # All column with a "Yes" or "No"
+    column_list = ["sr_no_owner", "is_covered"]
+    # Create a conditional formatting for each column.
+    for column in column_list:
+        # Get the column letter by the column name
+        target_col = xl_col_to_name(df.columns.get_loc(column))
+        # -> Excel requires the value to be double quoted
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {"type": "cell", "criteria": "equal to", "value": '"NO"', "format": red_format},
+        )
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {"type": "cell", "criteria": "equal to", "value": '"YES"', "format": green_format},
+        )
+
+    # Create a conditional formatting for each column. Get the column letter by the column name
+    for column in DATE_COLUMN_LIST:
+        # -> Excel requires the value to be double quoted
+        target_col = xl_col_to_name(df.columns.get_loc(column))
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {
+                "type": "date",
+                "criteria": "greater than or equal to",
+                "value": DATE_TODADY,
+                "format": green_format,
+            },
+        )
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {
+                "type": "date",
+                "criteria": "between",
+                "minimum": datetime.strptime("1990-01-01", "%Y-%m-%d"),
+                "maximum": DATE_TODADY - timedelta(days=DATE_GRACE_PERIOD),
+                "format": red_format,
+            },
+        )
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {
+                "type": "date",
+                "criteria": "between",
+                "minimum": DATE_TODADY - timedelta(days=DATE_GRACE_PERIOD),
+                "maximum": DATE_TODADY,
+                "format": orange_format,
+            },
+        )
+
+    print(task_info(text="PYTHON create XlsxWriter conditional formating", changed="False"))
+    print("'PYTHON create XlsxWriter conditional formating' -> PythonResult <Success: True>")
+
+    #### Save the Excel report file to disk ##################################################################
+
+    print_task_name(text="PYTHON generate report Excel file")
+
+    # Close the Pandas Excel writer and output the Excel file.
+    writer.save()
+
+    print(task_info(text="PYTHON generate report Excel file", changed="False"))
+    print("'PYTHON generate report Excel file' -> PythonResult <Success: True>")
+    print(f"\n-> Saved {report_file}")
 
 
 def main():
     """
     Main function is executed when the file is directly executed.
     """
+    # pylint: disable=invalid-name
+
     #### Initialize Script and Nornir ########################################################################
 
     # Print a custom script banner
@@ -446,11 +695,18 @@ def main():
     if use_nornir:
         # Initialize, transform and filter the Nornir inventory are return the filtered Nornir object
         nr_obj = init_nornir(args=args)
-        # Prepare the serials dict and the Cisco support API credentials tuple
-        serials, api_client_creds = prepare_nornir_data(nr_obj=nr_obj, args=args)
+        # Prepare the serials dict and the report_file string for later processing
+        serials, report_file = prepare_nornir_data(nr_obj=nr_obj, args=args)
+        # Prepare the Cisco support API key and the secret in a tuple
+        api_client_creds = (
+            nr_obj.inventory.defaults.data["cisco_support"]["env_client_key"],
+            nr_obj.inventory.defaults.data["cisco_support"]["env_client_secret"],
+        )
     else:
-        # Prepare the serials dict and the Cisco support API credentials tuple
-        serials, api_client_creds = prepare_static_data(args=args)
+        # Prepare the serials dict and the report_file string for later processing
+        serials, report_file = prepare_static_data(args=args)
+        # Prepare the Cisco support API key and the secret in a tuple
+        api_client_creds = (args.api_key, args.api_secret)
 
     #### Get Cisco Support-API Data ##########################################################################
 
@@ -463,21 +719,21 @@ def main():
     print_task_title("Gather Cisco support API data for serial numbers")
 
     # Cisco Support API Call SNIgetOwnerCoverageStatusBySerialNumbers and update the serials dictionary
-    serials = sni_get_owner_coverage_by_serial_number(
+    serials = get_sni_owner_coverage_by_serial_number(
         serial_dict=serials,
         api_client_creds=api_client_creds,
         verbose=args.verbose,
     )
 
     # Cisco Support API Call SNIgetCoverageSummaryBySerialNumbers and update the serials dictionary
-    serials = sni_get_coverage_summary_by_serial_numbers(
+    serials = get_sni_coverage_summary_by_serial_numbers(
         serial_dict=serials,
         api_client_creds=api_client_creds,
         verbose=args.verbose,
     )
 
     # Cisco Support API Call EOXgetBySerialNumbers and update the serials dictionary
-    serials = eox_by_serial_numbers(
+    serials = get_eox_by_serial_numbers(
         serial_dict=serials,
         api_client_creds=api_client_creds,
         verbose=args.verbose,
@@ -487,7 +743,27 @@ def main():
     # The script will exit with an error message in case of invalid serial numbers
     verify_cisco_support_api_data(serials_dict=serials, verbose=args.verbose)
 
-    #### Create the Excel Report #############################################################################
+    #### Prepate the Excel report data #######################################################################
+
+    # Exit the script if the --args.report argument is not set
+    if not args.report:
+        sys.exit(0)
+
+    print_task_title("Prepare Cisco maintenance report")
+
+    # Prepare the report data and create a pandas dataframe
+    df = create_pandas_df_for_report(serials_dict=serials, verbose=args.verbose)
+
+    #### Generate Cisco maintenance report Excel #############################################################
+
+    print_task_title("Generate Cisco maintenance report")
+    print_task_name(text="PYTHON process report data")
+
+    # Construct the new destination path and filename from the report_file string variable
+    report_file = construct_report_filename(report_file=report_file)
+
+    # Generate the Cisco Maintenance report Excel file specified by the report_file with the pandas dataframe
+    generate_cisco_maintenance_report(report_file=report_file, df=df)
 
     print("\n")
 

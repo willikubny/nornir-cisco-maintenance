@@ -2,6 +2,10 @@
 /inventory
 nr_log.txt
 
+# Report and files folder
+/reports
+/files
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
