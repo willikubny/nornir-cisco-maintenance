@@ -51,7 +51,7 @@ TITLE_FONT_SIZE = 20
 TITLE_FONT_COLOR = "#FFFFFF"
 TITLE_BACKGROUND_COLOR = "#FF452C"
 # Specify all settings for the title logo (logo placement is in merged cell A1-A3)
-TITLE_LOGO = "reports/src/kyndryl_logo.png"
+TITLE_LOGO = "reports/src/title_logo.png"
 TITLE_LOGO_X_SCALE = 1.0
 TITLE_LOGO_Y_SCALE = 1.2
 TITLE_LOGO_X_OFFSET = 80
@@ -61,13 +61,14 @@ TITLE_TEXT = "Cisco Maintenance Report"
 # Specify the Excel table formatting style
 EXCEL_TABLE_STYLE = "Table Style Medium 8"
 # Specify the default table text settings
-TABLE_DEFAULT_FONT_NAME = "Arial"
-TABLE_DEFAULT_FONT_SIZE = 12
+TABLE_FONT_NAME = "Arial"
+TABLE_FONT_SIZE = 12
 # Get the current date in the format YYYY-mm-dd
 DATE_TODADY = datetime.today().date()
 # Specify the grace period in days where a date should be flaged orange before expire and is flaged red
 DATE_GRACE_PERIOD = 90
-# Specify the dict keys and their order for the pandas dataframe -> Key order == excel colums order
+# Specify the list of dict keys and their order for the pandas dataframe -> Key order == excel colums order
+# When a key is removed, the column is removed for the Excel report
 # fmt: off
 EXCEL_COLUMN_ORDER = [
     "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "contract_site_customer_name",
@@ -80,7 +81,7 @@ EXCEL_COLUMN_ORDER = [
     "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation", "MigrationProductId",
     "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
 ]
-# Specify all columns with a date
+# Specify all columns with a date for conditional formatting
 DATE_COLUMN_LIST = [
     "coverage_end_date", "covered_product_line_end_date", "warranty_end_date", "EOXExternalAnnouncementDate",
     "EndOfSaleDate", "EndOfSWMaintenanceReleases", "EndOfRoutineFailureAnalysisDate",
@@ -523,12 +524,9 @@ def generate_cisco_maintenance_report(report_file, df):
     df.to_excel(writer, sheet_name="Cisco_Maintenance_Report", startrow=2, header=False, index=False)
 
     # Get the xlsxwriter workbook and worksheet objects.
-    workbook = writer.book  # pylint: disable=no-member
+    workbook = writer.book
     worksheet = writer.sheets["Cisco_Maintenance_Report"]
-
-    # Default cell format to size 10 and font type to Arial
-    workbook.formats[0].set_font_size(TABLE_DEFAULT_FONT_SIZE)
-    workbook.formats[0].set_font_name(TABLE_DEFAULT_FONT_NAME)
+    worksheet.set_zoom(110)
 
     # Get the dimensions of the dataframe.
     (max_row, max_col) = df.shape
@@ -542,7 +540,7 @@ def generate_cisco_maintenance_report(report_file, df):
 
     #### Create the top title row ############################################################################
 
-    # Set the top row height according to the image
+    # Set the top row height
     worksheet.set_row(0, 60)
     # Create a format to use for the merged top row
     title_format = workbook.add_format(
@@ -593,8 +591,16 @@ def generate_cisco_maintenance_report(report_file, df):
     # fmt: on
 
     # Auto-adjust each column width -> +3 on the width makes space for the filter icon
+    table_format = workbook.add_format(
+        {
+            "font_name": TABLE_FONT_NAME,
+            "font_size": TABLE_FONT_SIZE,
+            "align": "left",
+            "valign": "vcenter",
+        }
+    )
     for index, width in enumerate(get_pandas_column_width(df)):
-        worksheet.set_column(index, index - 1, width + 3)
+        worksheet.set_column(index, index - 1, width + 3, table_format)
 
     print(task_info(text="PYTHON create XlsxWriter table and add pandas dataframe", changed="False"))
     print("'PYTHON create XlsxWriter table and add pandas dataframe' -> PythonResult <Success: True>")
@@ -666,11 +672,12 @@ def generate_cisco_maintenance_report(report_file, df):
     print_task_name(text="PYTHON generate report Excel file")
 
     # Close the Pandas Excel writer and output the Excel file.
-    writer.save()
+    writer.close()
 
     print(task_info(text="PYTHON generate report Excel file", changed="False"))
     print("'PYTHON generate report Excel file' -> PythonResult <Success: True>")
     print(f"\n-> Saved {report_file}")
+    print("\n\u2728 Good news! Script successfully finished! \u2728")
 
 
 def main():
@@ -747,6 +754,7 @@ def main():
 
     # Exit the script if the --args.report argument is not set
     if not args.report:
+        print("\n\u2728 Good news! Script successfully finished! \u2728\n\n")
         sys.exit(0)
 
     print_task_title("Prepare Cisco maintenance report")
