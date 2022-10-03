@@ -9,7 +9,6 @@ import json
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from pyfiglet import figlet_format
 from xlsxwriter.utility import xl_col_to_name
 from nornir import InitNornir
 from nornir_scrapli.tasks import send_command
@@ -22,6 +21,7 @@ from nornir_maze.cisco_support.api_calls import (
     verify_cisco_support_api_data,
 )
 from nornir_maze.utils import (
+    print_script_banner,
     print_task_title,
     print_task_name,
     task_host,
@@ -168,8 +168,14 @@ def prepare_nornir_data(nr_obj, args):
     # Get the report_file string from the Nornir inventory for later destination file constructing
     report_file = nr_obj.inventory.defaults.data["cisco_maintenance_report"]["file"]
 
-    # return the serials dict and the report_file string variable
-    return serials, report_file
+    # Prepare the Cisco support API key and the secret in a tuple
+    api_client_creds = (
+        nr_obj.inventory.defaults.data["cisco_support_api"]["env_client_key"],
+        nr_obj.inventory.defaults.data["cisco_support_api"]["env_client_secret"],
+    )
+
+    # return the serials dict and the report_file string variable and the api_client_creds tuple
+    return serials, report_file, api_client_creds
 
 
 def prepare_static_data(args):
@@ -256,8 +262,11 @@ def prepare_static_data(args):
         )
         sys.exit(1)
 
-    # return the serials dict and the report_file string variable
-    return serials, report_file
+    # Prepare the Cisco support API key and the secret in a tuple
+    api_client_creds = (args.api_key, args.api_secret)
+
+    # return the serials dict and the report_file string variable and the api_client_creds tuple
+    return serials, report_file, api_client_creds
 
 
 def prepare_report_data_host(serials_dict):
@@ -687,10 +696,9 @@ def main():
 
     #### Initialize Script and Nornir ########################################################################
 
-    # Print a custom script banner
-    print(
-        f"\n\033[92m{figlet_format('Cisco Maint-Check', width=110)}"
-        + "Cisco maintenance checker with Nornir and the Cisco support APIs\033[0m"
+    print_script_banner(
+        title="Cisco Maint-Check",
+        text="Cisco maintenance checker with Nornir and the Cisco support APIs",
     )
 
     print_task_title("Initialize ArgParse")
@@ -702,17 +710,10 @@ def main():
         # Initialize, transform and filter the Nornir inventory are return the filtered Nornir object
         nr_obj = init_nornir(args=args)
         # Prepare the serials dict and the report_file string for later processing
-        serials, report_file = prepare_nornir_data(nr_obj=nr_obj, args=args)
-        # Prepare the Cisco support API key and the secret in a tuple
-        api_client_creds = (
-            nr_obj.inventory.defaults.data["cisco_support"]["env_client_key"],
-            nr_obj.inventory.defaults.data["cisco_support"]["env_client_secret"],
-        )
+        serials, report_file, api_client_creds = prepare_nornir_data(nr_obj=nr_obj, args=args)
     else:
         # Prepare the serials dict and the report_file string for later processing
-        serials, report_file = prepare_static_data(args=args)
-        # Prepare the Cisco support API key and the secret in a tuple
-        api_client_creds = (args.api_key, args.api_secret)
+        serials, report_file, api_client_creds = prepare_static_data(args=args)
 
     #### Get Cisco Support-API Data ##########################################################################
 

@@ -2,9 +2,3 @@ pre-commit
 nornir-maze
 pandas
 openpyxl
-pyfiglet
-black
-pylint
-prospector
-bandit
-vulture
