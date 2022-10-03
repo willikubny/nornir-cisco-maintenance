@@ -114,9 +114,9 @@ def init_nornir(args):
         iterable=nr.inventory.defaults.data,
         verbose=args.verbose,
         mandatory={
-            "cisco_support": {
-                "env_client_key": "CISCO_SUPPORT_KEY",
-                "env_client_secret": "CISCO_SUPPORT_SECRET",
+            "cisco_support_api": {
+                "env_client_key": "CISCO_SUPPORT_API_KEY",
+                "env_client_secret": "CISCO_SUPPORT_API_SECRET",
             },
         },
     )
@@ -166,7 +166,7 @@ def prepare_nornir_data(nr_obj, args):
                 serials.update(serial)
 
     # Get the report_file string from the Nornir inventory for later destination file constructing
-    report_file = nr_obj.inventory.defaults.data["cisco_support"]["cisco_maintenance_report_file"]
+    report_file = nr_obj.inventory.defaults.data["cisco_maintenance_report"]["file"]
 
     # return the serials dict and the report_file string variable
     return serials, report_file
