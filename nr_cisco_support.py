@@ -114,7 +114,7 @@ def init_nornir(args):
         iterable=nr.inventory.defaults.data,
         verbose=args.verbose,
         mandatory={
-            "cisco_support_api": {
+            "cisco_support_api_creds": {
                 "env_client_key": "CISCO_SUPPORT_API_KEY",
                 "env_client_secret": "CISCO_SUPPORT_API_SECRET",
             },
@@ -170,8 +170,8 @@ def prepare_nornir_data(nr_obj, args):
 
     # Prepare the Cisco support API key and the secret in a tuple
     api_client_creds = (
-        nr_obj.inventory.defaults.data["cisco_support_api"]["env_client_key"],
-        nr_obj.inventory.defaults.data["cisco_support_api"]["env_client_secret"],
+        nr_obj.inventory.defaults.data["cisco_support_api_creds"]["env_client_key"],
+        nr_obj.inventory.defaults.data["cisco_support_api_creds"]["env_client_secret"],
     )
 
     # return the serials dict and the report_file string variable and the api_client_creds tuple
