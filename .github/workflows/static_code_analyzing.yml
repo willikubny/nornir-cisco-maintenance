@@ -1,0 +1,23 @@
+name: Static Python 🐍 Code Analyzing with MAKE
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  static-code-analyzing:
+    name: Static Code Analyzing with MAKE
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.9"
+
+    - name: Install requirements
+      run: python -m pip install -r requirements.txt --user
+
+    - name: Run MAKE
+      run: make
