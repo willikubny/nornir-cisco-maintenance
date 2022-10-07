@@ -16,8 +16,11 @@ from nornir_maze.cisco_support.utils import init_args
 from nornir_maze.cisco_support.api_calls import (
     cisco_support_check_authentication,
     get_sni_owner_coverage_by_serial_number,
+    print_sni_owner_coverage_by_serial_number,
     get_sni_coverage_summary_by_serial_numbers,
+    print_sni_coverage_summary_by_serial_numbers,
     get_eox_by_serial_numbers,
+    print_eox_by_serial_numbers,
     verify_cisco_support_api_data,
 )
 from nornir_maze.utils import (
@@ -31,6 +34,7 @@ from nornir_maze.utils import (
     nr_transform_default_creds_from_env,
     nr_transform_inv_from_env,
     iterate_all,
+    get_pandas_column_width,
 )
 
 
@@ -424,17 +428,6 @@ def prepare_report_data_eox_by_serial_numbers(serials_dict):
     return end_of_life
 
 
-def get_pandas_column_width(df):  # pylint: disable=invalid-name
-    """
-    Helper function to get the width of each pandas dataframe column.
-    """
-    # Find the maximum length of the index column
-    idx_max = max([len(str(s)) for s in df.index.values] + [len(str(df.index.name))])
-
-    # Concatenate this to the max of the lengths of column name and its values for each column, left to right
-    return [idx_max] + [max([len(str(s)) for s in df[col].values] + [len(col)]) for col in df.columns]
-
-
 def construct_report_filename(report_file):
     """
     Construct the new destination path and filename from the report_file string variable. The report_file
@@ -468,7 +461,7 @@ def construct_report_filename(report_file):
     return report_file
 
 
-def create_pandas_df_for_report(serials_dict, verbose=False):
+def create_pandas_dataframe_for_report(serials_dict, verbose=False):
     """
     Prepare the report data and create a pandas dataframe. The pandas dataframe will be returned
     """
@@ -684,8 +677,7 @@ def generate_cisco_maintenance_report(report_file, df):
 
     print(task_info(text="PYTHON generate report Excel file", changed="False"))
     print("'PYTHON generate report Excel file' -> PythonResult <Success: True>")
-    print(f"\n-> Saved {report_file}")
-    print("\n\u2728 Good news! Script successfully finished! \u2728")
+    print(f"\n-> Saved information about {df.shape[0]} serials to {report_file}")
 
 
 def main():
@@ -721,7 +713,8 @@ def main():
 
     # Check the API authentication with the client key and secret to get an access token
     # The script will exit with an error message in case the authentication fails
-    cisco_support_check_authentication(api_client_creds=api_client_creds, verbose=args.verbose)
+    if not cisco_support_check_authentication(api_client_creds=api_client_creds, verbose=args.verbose):
+        sys.exit(1)
 
     print_task_title("Gather Cisco support API data for serial numbers")
 
@@ -729,26 +722,30 @@ def main():
     serials = get_sni_owner_coverage_by_serial_number(
         serial_dict=serials,
         api_client_creds=api_client_creds,
-        verbose=args.verbose,
     )
+    # Print the results of get_sni_owner_coverage_by_serial_number()
+    print_sni_owner_coverage_by_serial_number(serial_dict=serials, verbose=args.verbose)
 
     # Cisco Support API Call SNIgetCoverageSummaryBySerialNumbers and update the serials dictionary
     serials = get_sni_coverage_summary_by_serial_numbers(
         serial_dict=serials,
         api_client_creds=api_client_creds,
-        verbose=args.verbose,
     )
+    # Print the results of get_sni_coverage_summary_by_serial_numbers()
+    print_sni_coverage_summary_by_serial_numbers(serial_dict=serials, verbose=args.verbose)
 
     # Cisco Support API Call EOXgetBySerialNumbers and update the serials dictionary
     serials = get_eox_by_serial_numbers(
         serial_dict=serials,
         api_client_creds=api_client_creds,
-        verbose=args.verbose,
     )
+    # Print the results of get_eox_by_serial_numbers()
+    print_eox_by_serial_numbers(serial_dict=serials, verbose=args.verbose)
 
     # Verify that the serials dictionary contains no wrong serial numbers
     # The script will exit with an error message in case of invalid serial numbers
-    verify_cisco_support_api_data(serials_dict=serials, verbose=args.verbose)
+    if not verify_cisco_support_api_data(serials_dict=serials, verbose=args.verbose):
+        sys.exit(1)
 
     #### Prepate the Excel report data #######################################################################
 
@@ -760,7 +757,7 @@ def main():
     print_task_title("Prepare Cisco maintenance report")
 
     # Prepare the report data and create a pandas dataframe
-    df = create_pandas_df_for_report(serials_dict=serials, verbose=args.verbose)
+    df = create_pandas_dataframe_for_report(serials_dict=serials, verbose=args.verbose)
 
     #### Generate Cisco maintenance report Excel #############################################################
 
@@ -772,6 +769,8 @@ def main():
 
     # Generate the Cisco Maintenance report Excel file specified by the report_file with the pandas dataframe
     generate_cisco_maintenance_report(report_file=report_file, df=df)
+
+    print("\n\u2728 Good news! Script successfully finished! \u2728")
 
     print("\n")
 
