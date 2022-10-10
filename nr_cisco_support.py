@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Docstring needs to be changed
+The main function will gather device serial numbers over different input options (argument list, Excel or
+dynamically with Nornir) as well as the hostname. With the serial numbers the Cisco support APIs will be
+called and the received information will be printed to stdout and optional processed into an Excel report.
+Optionally a IBM TSS Maintenance Report can be added with an argument to compare and analyze the IBM TSS
+information against the received data from the Cisco support APIs. Also these additional data will be
+processed into an Excel report and saved to the local disk.
 """
 
 import os
@@ -35,6 +40,7 @@ from nornir_maze.utils import (
     nr_transform_inv_from_env,
     iterate_all,
     get_pandas_column_width,
+    construct_filename_with_current_date,
 )
 
 
@@ -63,36 +69,49 @@ TITLE_LOGO_X_OFFSET = 80
 TITLE_LOGO_Y_OFFSET = 18
 # Specify the title text (title text starts from cell A4)
 TITLE_TEXT = "Cisco Maintenance Report"
+TITLE_TEXT_WITH_TSS = "Cisco Maintenance Report incl. IBM TSS Analysis"
 # Specify the Excel table formatting style
 EXCEL_TABLE_STYLE = "Table Style Medium 8"
 # Specify the default table text settings
 TABLE_FONT_NAME = "Arial"
 TABLE_FONT_SIZE = 12
-# Get the current date in the format YYYY-mm-dd
-DATE_TODADY = datetime.today().date()
 # Specify the grace period in days where a date should be flaged orange before expire and is flaged red
 DATE_GRACE_PERIOD = 90
 # Specify the list of dict keys and their order for the pandas dataframe -> Key order == excel colums order
 # When a key is removed, the column is removed for the Excel report
 # fmt: off
 EXCEL_COLUMN_ORDER = [
-    "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "contract_site_customer_name",
-    "contract_site_address1", "contract_site_city", "contract_site_state_province",
-    "contract_site_country", "covered_product_line_end_date", "service_contract_number",
+    "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "coverage_action_needed",
+    "api_action_needed", "contract_site_customer_name", "contract_site_address1", "contract_site_city",
+    "contract_site_state_province", "contract_site_country", "covered_product_line_end_date",
+    "service_contract_number", "service_line_descr", "warranty_end_date", "warranty_type",
+    "warranty_type_description", "item_description", "item_type", "orderable_pid", "ErrorDescription",
+    "ErrorDataType", "ErrorDataValue", "EOXExternalAnnouncementDate", "EndOfSaleDate",
+    "EndOfSWMaintenanceReleases", "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal",
+    "LastDateOfSupport", "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation",
+    "MigrationProductId", "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
+]
+EXCEL_COLUMN_ORDER_WITH_TSS = [
+    "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "coverage_action_needed",
+    "api_action_needed", "tss_serial", "tss_status", "contract_site_customer_name",
+    "contract_site_address1", "contract_site_city", "contract_site_state_province", "contract_site_country",
+    "covered_product_line_end_date", "service_contract_number", "tss_contract", "tss_service_level",
     "service_line_descr", "warranty_end_date", "warranty_type", "warranty_type_description",
-    "item_description", "item_type", "orderable_pid", "ErrorDescription", "ErrorDataType",
-    "ErrorDataValue", "EOXExternalAnnouncementDate", "EndOfSaleDate", "EndOfSWMaintenanceReleases",
+    "item_description", "item_type", "orderable_pid", "ErrorDescription", "ErrorDataType", "ErrorDataValue",
+    "EOXExternalAnnouncementDate", "EndOfSaleDate", "EndOfSWMaintenanceReleases",
     "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal", "LastDateOfSupport",
     "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation", "MigrationProductId",
     "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
 ]
 # Specify all columns with a date for conditional formatting
 DATE_COLUMN_LIST = [
-    "coverage_end_date", "covered_product_line_end_date", "warranty_end_date", "EOXExternalAnnouncementDate",
-    "EndOfSaleDate", "EndOfSWMaintenanceReleases", "EndOfRoutineFailureAnalysisDate",
-    "EndOfServiceContractRenewal", "LastDateOfSupport", "EndOfSvcAttachDate",
+    "coverage_end_date", "EOXExternalAnnouncementDate", "EndOfSaleDate", "EndOfSWMaintenanceReleases",
+    "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal", "LastDateOfSupport",
+    "EndOfSvcAttachDate",
 ]
 # fmt: on
+# Get the current date in the format YYYY-mm-dd
+DATE_TODADY = datetime.today().date()
 
 
 def init_nornir(args):
@@ -428,40 +447,163 @@ def prepare_report_data_eox_by_serial_numbers(serials_dict):
     return end_of_life
 
 
-def construct_report_filename(report_file):
+def prepare_report_data_act_needed(serials_dict):
     """
-    Construct the new destination path and filename from the report_file string variable. The report_file
-    string can contain as much subfolder as needed. The filename must have a date at the end in the formart
-    _dd-mm-yyyy, _yyyy-mm-dd, _dd_mm_yyyy or _yyyy_mm_dd which are 11 characters that will be sliced away and
-    the current date will be added. The function returns the new constructed destination file.
+    This function takes the serials_dict an argument and creates a dictionary named act_needed will be
+    returned which contains the key value pairs "coverage_action_needed" and "api_action_needed" to create a
+    Pandas dataframe later.
     """
-    # Create some variables to construct the destination path and filename
-    # Get the path and the filename from file variable string
-    path, filename = os.path.split(report_file)
+    # Define the coverage_action_needed dict and its key value pairs to return as the end of the function
+    act_needed = {}
+    act_needed["coverage_action_needed"] = []
+    act_needed["api_action_needed"] = []
 
-    # Create the path folder if it don't exists
-    if not os.path.exists(path):
-        os.makedirs(path)
+    for records in serials_dict.values():
+        # Verify if the user has the correct access rights to access the serial API data
+        if "YES" in records["SNIgetOwnerCoverageStatusBySerialNumbers"]["sr_no_owner"]:
+            act_needed["api_action_needed"].append(
+                "No action needed (API user is associated with contract and device)"
+            )
+        else:
+            act_needed["api_action_needed"].append(
+                "Action needed (No associattion between api user, contract and device)"
+            )
 
-    # Get the filename and the extension from the filename variable
-    filename, file_extension = os.path.splitext(filename)
+        # Verify if the serial is covered by Cisco add the coverage_action_needed variable to tss_info
+        if "YES" in records["SNIgetCoverageSummaryBySerialNumbers"]["is_covered"]:
+            act_needed["coverage_action_needed"].append(
+                "No action needed (Device is covered by a maintenance contract)"
+            )
+        else:
+            act_needed["coverage_action_needed"].append(
+                "Action needed (Device is not covered by a maintenance contract)"
+            )
 
-    # Slice the date away from the filename
-    # Works for various date combinations _dd-mm-yyyy or _yyyy-mm-dd or _dd_mm_yyyy or _yyyy_mm_dd
-    # Slicing from the end will ensure that you extract the date no matter what the name is and how long it is
-    filename = filename[:-11]
-
-    # Destination filename
-    report_file = f"{path}/{filename}_{DATE_TODADY}{file_extension}"
-
-    print(task_info(text="PYTHON construct destination file", changed="False"))
-    print("'PYTHON construct destination file' -> PythonResult <Success: True>")
-    print(f"\n-> Constructed {report_file}\n")
-
-    return report_file
+    return act_needed
 
 
-def create_pandas_dataframe_for_report(serials_dict, verbose=False):
+def prepare_report_data_tss(serials_dict, file):
+    """
+    This function takes the serials_dict and a source file which is the IBM TSS report as arguments. The only
+    mandatory column is the "Serials" which will be normalized to tss_serial. All other columns can be
+    specified with their order and the prefix "tss_" in the EXCEL_COLUMN_ORDER_WITH_TSS constant. A dictionary
+    named tss_info will be returned which contains the key value pairs "coverage_action_needed",
+    "api_action_needed" and all TSS data to create a Pandas dataframe later.
+    """
+    # pylint: disable=invalid-name,too-many-branches
+
+    # Define the tss_info dict and its key value pairs to return as the end of the function
+    tss_info = {}
+    tss_info["coverage_action_needed"] = []
+    tss_info["api_action_needed"] = []
+    for column in EXCEL_COLUMN_ORDER_WITH_TSS:
+        if column.startswith("tss_"):
+            tss_info[column] = []
+
+    # Read the excel file into a pandas dataframe -> Row 0 is the title row
+    df = pd.read_excel(rf"{file}")
+
+    # Make some data normalization of the TSS report file column headers
+    # Make column written in lowercase letters
+    df.columns = df.columns.str.lower()
+    # Replace column name whitespace with underscore
+    df.columns = df.columns.str.replace(" ", "_")
+    # Add a prefix to the column name to identify the TSS report columns
+    df = df.add_prefix("tss_")
+
+    # Make all serial numbers written in uppercase letters
+    df.tss_serial = df.tss_serial.str.upper()
+
+    # The first fillna will replace all of (None, NAT, np.nan, etc) with Numpy's NaN, then replace
+    # Numpy's NaN with python's None
+    df = df.fillna(np.nan).replace([np.nan], [None])
+
+    # Delete all rows which have not the value "Cisco" in the OEM column
+    df = df[df.tss_oem == "Cisco"]
+
+    # Create a list with all IBM TSS serial numbers
+    tss_serial_list = df["tss_serial"].tolist()
+
+    # Look for inventory serials which are covered by IBM TSS and add them to the serial_dict
+    # It's important to match IBM TSS serials to inventory serials first for the correct order
+    for sr_no, records in serials_dict.items():
+        records["tss_info"] = {}
+
+        # Covered by IBM TSS if inventory serial number is in all IBM TSS serial numbers
+        if sr_no in tss_serial_list:
+            # Verify if the user has the correct access rights to access the serial API data
+            if "YES" in records["SNIgetOwnerCoverageStatusBySerialNumbers"]["sr_no_owner"]:
+                tss_info["api_action_needed"].append(
+                    "No action needed (API user is associated with contract and device)"
+                )
+            else:
+                tss_info["api_action_needed"].append(
+                    "Action needed (No associattion between api user, contract and device)"
+                )
+
+            # Verify if the inventory serial is covered by IBM TSS and is also covered by Cisco
+            # Verify if the serial is covered by Cisco add the coverage_action_needed variable to tss_info
+            if "YES" in records["SNIgetCoverageSummaryBySerialNumbers"]["is_covered"]:
+                tss_info["coverage_action_needed"].append("No action needed (Covered by IBM TSS and Cisco)")
+            else:
+                tss_info["coverage_action_needed"].append(
+                    "Action needed (Covered by IBM TSS, but Cisco coverage missing)"
+                )
+
+            # Get the index of the list item and assign the element from the TSS dataframe by its index
+            index = tss_serial_list.index(sr_no)
+            # Add the data from the TSS dataframe to tss_info
+            for column, value in tss_info.items():
+                if column.startswith("tss_"):
+                    value.append(df[column].values[index])
+
+        # Inventory serial number is not in all IBM TSS serial numbers
+        else:
+            # Verify if the user has the correct access rights to access the serial API data
+            if "YES" in records["SNIgetOwnerCoverageStatusBySerialNumbers"]["sr_no_owner"]:
+                tss_info["api_action_needed"].append(
+                    "No action needed (API user is associated with contract and device)"
+                )
+            else:
+                tss_info["api_action_needed"].append(
+                    "Action needed (No associattion between api user, contract and device)"
+                )
+
+            # Verify if the inventory serial is covered by Cisco
+            # Add the coverage_action_needed variable to tss_info
+            if "YES" in records["SNIgetCoverageSummaryBySerialNumbers"]["is_covered"]:
+                tss_info["coverage_action_needed"].append("No action needed (Covered by Cisco SmartNet)")
+            else:
+                tss_info["coverage_action_needed"].append(
+                    "Action needed (Cisco SmartNet or IBM TSS coverage missing)"
+                )
+
+            # Add the empty strings for all additional IBM TSS serials to tss_info
+            for column, value in tss_info.items():
+                if column.startswith("tss_"):
+                    value.append("")
+
+    # After the inventory serials have been processed
+    # Add IBM TSS serials to tss_info which are not part of the inventory serials
+    for tss_serial in tss_serial_list:
+        if tss_serial not in serials_dict.keys():
+            # Add the coverage_action_needed variable to tss_info
+            tss_info["coverage_action_needed"].append(
+                "Action needed (Remove serial from IBM TSS inventory as device is decommissioned)"
+            )
+            tss_info["api_action_needed"].append("No Cisco API data as serial is not part of column sr_no")
+
+            # Get the index of the list item and assign the element from the TSS dataframe by its index
+            index = tss_serial_list.index(tss_serial)
+            # Add the data from the TSS dataframe to tss_info
+            for column, value in tss_info.items():
+                if column.startswith("tss_"):
+                    value.append(df[column].values[index])
+
+    return tss_info
+
+
+def create_pandas_dataframe_for_report(serials_dict, tss_report=False, verbose=False):
     """
     Prepare the report data and create a pandas dataframe. The pandas dataframe will be returned
     """
@@ -469,16 +611,45 @@ def create_pandas_dataframe_for_report(serials_dict, verbose=False):
 
     print_task_name(text="PYTHON prepare report data")
 
-    # Prepare the needed data for the report from the serials dict. The serials dict contains all data that
-    # the Cisco support API sent. These functions return a dictionary with the needed data only
-    host = prepare_report_data_host(serials_dict=serials_dict)
-    owner_coverage_status = prepare_report_data_owner_coverage_by_serial_number(serials_dict=serials_dict)
-    coverage_summary = prepare_report_data_coverage_summary_by_serial_numbers(serials_dict=serials_dict)
-    end_of_life = prepare_report_data_eox_by_serial_numbers(serials_dict=serials_dict)
-
     # Create an empty dict and append the previous dicts to create later the pandas dataframe
     report_data = {}
-    report_data.update(**host, **owner_coverage_status, **coverage_summary, **end_of_life)
+
+    if tss_report:
+        # Prepare the needed data for the report from the serials dict. The serials dict contains all data
+        # that the Cisco support API sent. These functions return a dictionary with the needed data only
+        host = prepare_report_data_host(serials_dict=serials_dict)
+        owner_coverage_status = prepare_report_data_owner_coverage_by_serial_number(serials_dict=serials_dict)
+        coverage_summary = prepare_report_data_coverage_summary_by_serial_numbers(serials_dict=serials_dict)
+        end_of_life = prepare_report_data_eox_by_serial_numbers(serials_dict=serials_dict)
+
+        # Analyze the IBM TSS report file and create the tss_info dict
+        tss_info = prepare_report_data_tss(serials_dict=serials_dict, file=tss_report)
+
+        # The tss_info dict may have more list elements as TSS serials have been found which are not inside
+        # the customer inventory -> Add the differente to all other lists as empty strings
+        for _ in range(len(tss_info["tss_serial"]) - len(host["host"])):
+            for column in host.values():
+                column.append("")
+            for column in owner_coverage_status.values():
+                column.append("")
+            for column in coverage_summary.values():
+                column.append("")
+            for column in end_of_life.values():
+                column.append("")
+
+        # Update the report_data dict with all prepared data dicts
+        report_data.update(**host, **owner_coverage_status, **coverage_summary, **end_of_life, **tss_info)
+    else:
+        # Prepare the needed data for the report from the serials dict. The serials dict contains all data
+        # that the Cisco support API sent. These functions return a dictionary with the needed data only
+        host = prepare_report_data_host(serials_dict=serials_dict)
+        owner_coverage_status = prepare_report_data_owner_coverage_by_serial_number(serials_dict=serials_dict)
+        coverage_summary = prepare_report_data_coverage_summary_by_serial_numbers(serials_dict=serials_dict)
+        end_of_life = prepare_report_data_eox_by_serial_numbers(serials_dict=serials_dict)
+        act_needed = prepare_report_data_act_needed(serials_dict=serials_dict)
+
+        # Update the report_data dict with all prepared data dicts
+        report_data.update(**host, **owner_coverage_status, **coverage_summary, **end_of_life, **act_needed)
 
     print(task_info(text="PYTHON prepare report data dict", changed="False"))
     print("'PYTHON prepare report data dict' -> PythonResult <Success: True>")
@@ -486,12 +657,18 @@ def create_pandas_dataframe_for_report(serials_dict, verbose=False):
         print("\n" + json.dumps(report_data, indent=4))
 
     # Reorder the data dict according to the key_order list -> This needs Python >= 3.6
-    report_data = {key: report_data[key] for key in EXCEL_COLUMN_ORDER}
+    if tss_report:
+        report_data = {key: report_data[key] for key in EXCEL_COLUMN_ORDER_WITH_TSS}
+    else:
+        report_data = {key: report_data[key] for key in EXCEL_COLUMN_ORDER}
 
     print(task_info(text="PYTHON order report data dict", changed="False"))
     print("'PYTHON order report data dict' -> PythonResult <Success: True>")
     if verbose:
         print("\n" + json.dumps(report_data, indent=4))
+
+    for key, value in report_data.items():
+        print(f"{key} : {len(value)}")
 
     # Create a Pandas dataframe for the data dict
     df = pd.DataFrame(report_data)
@@ -508,7 +685,7 @@ def create_pandas_dataframe_for_report(serials_dict, verbose=False):
     return df
 
 
-def generate_cisco_maintenance_report(report_file, df):
+def generate_cisco_maintenance_report(report_file, df, tss_report=False):
     """
     Generate the Cisco Maintenance report Excel file specified by the report_file with the pandas dataframe.
     The function returns None, but saves the Excel file to the local disk.
@@ -575,7 +752,10 @@ def generate_cisco_maintenance_report(report_file, df):
         },
     )
     # Merge from the cell 4 to the max_col and write a title
-    title_text = f"{TITLE_TEXT} (generated by {os.path.basename(__file__)})"
+    if tss_report:
+        title_text = f"{TITLE_TEXT_WITH_TSS} (generated by {os.path.basename(__file__)})"
+    else:
+        title_text = f"{TITLE_TEXT} (generated by {os.path.basename(__file__)})"
     worksheet.merge_range(0, 3, 0, max_col, title_text, title_format)
 
     print(task_info(text="PYTHON create XlsxWriter title row", changed="False"))
@@ -615,13 +795,12 @@ def generate_cisco_maintenance_report(report_file, df):
     # Create a green background format for the conditional formatting
     green_format = workbook.add_format({"bg_color": "#9BBB59"})
 
-    # All column with a "Yes" or "No"
-    column_list = ["sr_no_owner", "is_covered"]
-    # Create a conditional formatting for each column.
+    # Create a conditional formatting for each column in the list.
+    column_list = ["sr_no_owner", "is_covered", "coverage_action_needed", "api_action_needed"]
     for column in column_list:
         # Get the column letter by the column name
         target_col = xl_col_to_name(df.columns.get_loc(column))
-        # -> Excel requires the value to be double quoted
+        # -> Excel requires the value for type cell to be double quoted
         worksheet.conditional_format(
             f"{target_col}3:{target_col}{max_row}",
             {"type": "cell", "criteria": "equal to", "value": '"NO"', "format": red_format},
@@ -630,17 +809,25 @@ def generate_cisco_maintenance_report(report_file, df):
             f"{target_col}3:{target_col}{max_row}",
             {"type": "cell", "criteria": "equal to", "value": '"YES"', "format": green_format},
         )
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {"type": "text", "criteria": "containing", "value": "No action needed", "format": green_format},
+        )
+        worksheet.conditional_format(
+            f"{target_col}3:{target_col}{max_row}",
+            {"type": "text", "criteria": "containing", "value": "Action needed", "format": red_format},
+        )
 
-    # Create a conditional formatting for each column. Get the column letter by the column name
+    # Create a conditional formatting for each column with a date. Get the column letter by the column name
     for column in DATE_COLUMN_LIST:
-        # -> Excel requires the value to be double quoted
         target_col = xl_col_to_name(df.columns.get_loc(column))
         worksheet.conditional_format(
             f"{target_col}3:{target_col}{max_row}",
             {
                 "type": "date",
-                "criteria": "greater than or equal to",
-                "value": DATE_TODADY,
+                "criteria": "between",
+                "minimum": DATE_TODADY + timedelta(days=DATE_GRACE_PERIOD),
+                "maximum": datetime.strptime("2999-01-01", "%Y-%m-%d"),
                 "format": green_format,
             },
         )
@@ -649,9 +836,9 @@ def generate_cisco_maintenance_report(report_file, df):
             {
                 "type": "date",
                 "criteria": "between",
-                "minimum": datetime.strptime("1990-01-01", "%Y-%m-%d"),
-                "maximum": DATE_TODADY - timedelta(days=DATE_GRACE_PERIOD),
-                "format": red_format,
+                "minimum": DATE_TODADY,
+                "maximum": DATE_TODADY + timedelta(days=DATE_GRACE_PERIOD),
+                "format": orange_format,
             },
         )
         worksheet.conditional_format(
@@ -659,9 +846,9 @@ def generate_cisco_maintenance_report(report_file, df):
             {
                 "type": "date",
                 "criteria": "between",
-                "minimum": DATE_TODADY - timedelta(days=DATE_GRACE_PERIOD),
-                "maximum": DATE_TODADY,
-                "format": orange_format,
+                "minimum": datetime.strptime("1999-01-01", "%Y-%m-%d"),
+                "maximum": DATE_TODADY - timedelta(days=1),
+                "format": red_format,
             },
         )
 
@@ -757,7 +944,7 @@ def main():
     print_task_title("Prepare Cisco maintenance report")
 
     # Prepare the report data and create a pandas dataframe
-    df = create_pandas_dataframe_for_report(serials_dict=serials, verbose=args.verbose)
+    df = create_pandas_dataframe_for_report(serials_dict=serials, tss_report=args.tss, verbose=args.verbose)
 
     #### Generate Cisco maintenance report Excel #############################################################
 
@@ -765,10 +952,13 @@ def main():
     print_task_name(text="PYTHON process report data")
 
     # Construct the new destination path and filename from the report_file string variable
-    report_file = construct_report_filename(report_file=report_file)
+    report_file = construct_filename_with_current_date(filename=report_file)
+    print(task_info(text="PYTHON construct destination file", changed="False"))
+    print("'PYTHON construct destination file' -> PythonResult <Success: True>")
+    print(f"\n-> Constructed {report_file}\n")
 
     # Generate the Cisco Maintenance report Excel file specified by the report_file with the pandas dataframe
-    generate_cisco_maintenance_report(report_file=report_file, df=df)
+    generate_cisco_maintenance_report(report_file=report_file, df=df, tss_report=args.tss)
 
     print("\n\u2728 Good news! Script successfully finished! \u2728")
 
