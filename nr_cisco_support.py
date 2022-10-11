@@ -667,9 +667,6 @@ def create_pandas_dataframe_for_report(serials_dict, tss_report=False, verbose=F
     if verbose:
         print("\n" + json.dumps(report_data, indent=4))
 
-    for key, value in report_data.items():
-        print(f"{key} : {len(value)}")
-
     # Create a Pandas dataframe for the data dict
     df = pd.DataFrame(report_data)
 
