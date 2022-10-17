@@ -179,8 +179,8 @@ def prepare_nornir_data(nr_obj, args):
                 serial = {nr_no.upper(): {}}
                 serial[nr_no.upper()]["host"] = host
 
-                print(task_host(host=f"HOST: {host} / SN: {nr_no}", changed="False"))
-                print(task_info(text=task_text, changed="False"))
+                print(task_host(host=f"HOST: {host} / SN: {nr_no}", changed=False))
+                print(task_info(text=task_text, changed=False))
                 print(f"'Add {nr_no} to serials dict' -> NornirResult <Success: True>")
                 if args.verbose:
                     print("\n" + json.dumps(serial, indent=4))
@@ -221,7 +221,7 @@ def prepare_static_data(args):
         # Create the report_file string for later destination file constructing
         report_file = "reports/cisco_maintenance_report_YYYY-mm-dd.xlsx"
 
-        print(task_info(text=task_text, changed="False"))
+        print(task_info(text=task_text, changed=False))
         print(f"'{task_text}' -> ArgparseResult <Success: True>")
 
         # Add all serials from args.serials to the serials dict
@@ -229,7 +229,7 @@ def prepare_static_data(args):
             serials[sr_no.upper()] = {}
             serials[sr_no.upper()]["host"] = None
 
-        print(task_info(text="PYTHON prepare static provided serial numbers", changed="False"))
+        print(task_info(text="PYTHON prepare static provided serial numbers", changed=False))
         print("'PYTHON prepare static provided serial numbers' -> ArgparseResult <Success: True>")
         if args.verbose:
             print("\n" + json.dumps(serials, indent=4))
@@ -239,7 +239,7 @@ def prepare_static_data(args):
         # Verify that the excel file exists
         if not os.path.exists(args.excel):
             # If the excel don't exist -> exit the script properly
-            print(task_error(text=task_text, changed="False"))
+            print(task_error(text=task_text, changed=False))
             print(f"'{task_text}' -> ArgparseResult <Success: False>")
             print()
             print(
@@ -252,7 +252,7 @@ def prepare_static_data(args):
         # Create the report_file string for later destination file constructing
         report_file = args.excel
 
-        print(task_info(text=task_text, changed="False"))
+        print(task_info(text=task_text, changed=False))
         print(f"'{task_text}' -> ArgparseResult <Success: True>")
 
         # Read the excel file into a pandas dataframe -> Row 0 is the title row
@@ -271,13 +271,13 @@ def prepare_static_data(args):
             serials[sr_no]["host"] = host
 
         # Print the static provided serial numbers
-        print(task_info(text="PANDAS prepare static provided Excel", changed="False"))
+        print(task_info(text="PANDAS prepare static provided Excel", changed=False))
         print("'PANDAS prepare static provided Excel' -> ArgparseResult <Success: True>")
         if args.verbose:
             print("\n" + json.dumps(serials, indent=4))
 
     else:
-        print(task_error(text=task_text, changed="False"))
+        print(task_error(text=task_text, changed=False))
         print(
             f"'{task_text}' -> ArgparseResult <Success: False>"
             + "\n\n\U0001f4a5 ALERT: NOT SUPPORTET ARGPARSE ARGUMENT FOR FURTHER PROCESSING! \U0001f4a5"
@@ -651,7 +651,7 @@ def create_pandas_dataframe_for_report(serials_dict, tss_report=False, verbose=F
         # Update the report_data dict with all prepared data dicts
         report_data.update(**host, **owner_coverage_status, **coverage_summary, **end_of_life, **act_needed)
 
-    print(task_info(text="PYTHON prepare report data dict", changed="False"))
+    print(task_info(text="PYTHON prepare report data dict", changed=False))
     print("'PYTHON prepare report data dict' -> PythonResult <Success: True>")
     if verbose:
         print("\n" + json.dumps(report_data, indent=4))
@@ -662,7 +662,7 @@ def create_pandas_dataframe_for_report(serials_dict, tss_report=False, verbose=F
     else:
         report_data = {key: report_data[key] for key in EXCEL_COLUMN_ORDER}
 
-    print(task_info(text="PYTHON order report data dict", changed="False"))
+    print(task_info(text="PYTHON order report data dict", changed=False))
     print("'PYTHON order report data dict' -> PythonResult <Success: True>")
     if verbose:
         print("\n" + json.dumps(report_data, indent=4))
@@ -674,7 +674,7 @@ def create_pandas_dataframe_for_report(serials_dict, tss_report=False, verbose=F
     for column in DATE_COLUMN_LIST:
         df[column] = pd.to_datetime(df[column], format="%Y-%m-%d")
 
-    print(task_info(text="PYTHON create pandas dataframe from dict", changed="False"))
+    print(task_info(text="PYTHON create pandas dataframe from dict", changed=False))
     print("'PANDAS create dataframe' -> PandasResult <Success: True>")
     if verbose:
         print(df)
@@ -715,7 +715,7 @@ def generate_cisco_maintenance_report(report_file, df, tss_report=False):
     # Max_com -1 otherwise would be one column to much
     max_col = max_col - 1
 
-    print(task_info(text="PYTHON create pandas writer object using XlsxWriter engine", changed="False"))
+    print(task_info(text="PYTHON create pandas writer object using XlsxWriter engine", changed=False))
     print("'PYTHON create pandas writer object using XlsxWriter engine' -> PythonResult <Success: True>")
 
     #### Create the top title row ############################################################################
@@ -755,7 +755,7 @@ def generate_cisco_maintenance_report(report_file, df, tss_report=False):
         title_text = f"{TITLE_TEXT} (generated by {os.path.basename(__file__)})"
     worksheet.merge_range(0, 3, 0, max_col, title_text, title_format)
 
-    print(task_info(text="PYTHON create XlsxWriter title row", changed="False"))
+    print(task_info(text="PYTHON create XlsxWriter title row", changed=False))
     print("'PYTHON create XlsxWriter title row' -> PythonResult <Success: True>")
 
     ### Create a Excel table structure and add the Pandas dataframe
@@ -780,7 +780,7 @@ def generate_cisco_maintenance_report(report_file, df, tss_report=False):
     for index, width in enumerate(get_pandas_column_width(df)):
         worksheet.set_column(index, index - 1, width + 5, table_format)
 
-    print(task_info(text="PYTHON create XlsxWriter table and add pandas dataframe", changed="False"))
+    print(task_info(text="PYTHON create XlsxWriter table and add pandas dataframe", changed=False))
     print("'PYTHON create XlsxWriter table and add pandas dataframe' -> PythonResult <Success: True>")
 
     #### Create conditional formating ########################################################################
@@ -849,7 +849,7 @@ def generate_cisco_maintenance_report(report_file, df, tss_report=False):
             },
         )
 
-    print(task_info(text="PYTHON create XlsxWriter conditional formating", changed="False"))
+    print(task_info(text="PYTHON create XlsxWriter conditional formating", changed=False))
     print("'PYTHON create XlsxWriter conditional formating' -> PythonResult <Success: True>")
 
     #### Save the Excel report file to disk ##################################################################
@@ -859,7 +859,7 @@ def generate_cisco_maintenance_report(report_file, df, tss_report=False):
     # Close the Pandas Excel writer and output the Excel file.
     writer.close()
 
-    print(task_info(text="PYTHON generate report Excel file", changed="False"))
+    print(task_info(text="PYTHON generate report Excel file", changed=False))
     print("'PYTHON generate report Excel file' -> PythonResult <Success: True>")
     print(f"\n-> Saved information about {df.shape[0]} serials to {report_file}")
 
@@ -950,7 +950,7 @@ def main():
 
     # Construct the new destination path and filename from the report_file string variable
     report_file = construct_filename_with_current_date(filename=report_file)
-    print(task_info(text="PYTHON construct destination file", changed="False"))
+    print(task_info(text="PYTHON construct destination file", changed=False))
     print("'PYTHON construct destination file' -> PythonResult <Success: True>")
     print(f"\n-> Constructed {report_file}\n")
 
