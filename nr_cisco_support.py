@@ -12,6 +12,7 @@ import os
 import sys
 import json
 from datetime import datetime, timedelta
+from colorama import Fore, Style, init
 import pandas as pd
 import numpy as np
 from xlsxwriter.utility import xl_col_to_name
@@ -42,6 +43,8 @@ from nornir_maze.utils import (
     get_pandas_column_width,
     construct_filename_with_current_date,
 )
+
+init(autoreset=True, strip=False)
 
 
 __author__ = "Willi Kubny"
@@ -241,11 +244,10 @@ def prepare_static_data(args):
             # If the excel don't exist -> exit the script properly
             print(task_error(text=task_text, changed=False))
             print(f"'{task_text}' -> ArgparseResult <Success: False>")
-            print()
+            print("\n\U0001f4a5 ALERT: FILE NOT FOUND! \U0001f4a5\n")
             print(
-                "\n\U0001f4a5 ALERT: FILE NOT FOUND! \U0001f4a5\n"
-                f"\033[1m\u001b[31m-> Excel file {args.excel} not found\n"
-                "-> Verify the file path and the --excel argument\033[0m\n\n"
+                f"{Style.BRIGHT}{Fore.RED}-> Excel file {args.excel} not found\n"
+                "-> Verify the file path and the --excel argument\n\n"
             )
             sys.exit(1)
 
@@ -278,11 +280,9 @@ def prepare_static_data(args):
 
     else:
         print(task_error(text=task_text, changed=False))
-        print(
-            f"'{task_text}' -> ArgparseResult <Success: False>"
-            + "\n\n\U0001f4a5 ALERT: NOT SUPPORTET ARGPARSE ARGUMENT FOR FURTHER PROCESSING! \U0001f4a5"
-            + "\n\033[1m\u001b[31m-> Analyse the python function for missing Argparse processing\n\n\033[0m"
-        )
+        print(f"'{task_text}' -> ArgparseResult <Success: False>")
+        print("\n\n\U0001f4a5 ALERT: NOT SUPPORTET ARGPARSE ARGUMENT FOR FURTHER PROCESSING! \U0001f4a5")
+        print(f"\n{Style.BRIGHT}{Fore.RED}-> Analyse the python function for missing Argparse processing\n\n")
         sys.exit(1)
 
     # Prepare the Cisco support API key and the secret in a tuple
