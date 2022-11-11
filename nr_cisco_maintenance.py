@@ -10,7 +10,6 @@ processed into an Excel report and saved to the local disk.
 
 import argparse
 import os
-import sys
 from datetime import datetime
 from nornir import InitNornir
 from nornir.core import Nornir
@@ -35,6 +34,8 @@ from nornir_maze.utils import (
     nr_filter_args,
     nr_transform_default_creds_from_env,
     nr_transform_inv_from_env,
+    exit_info,
+    exit_error,
 )
 
 
@@ -199,8 +200,8 @@ def main() -> None:
 
     # Check the API authentication with the client key and secret to get an access token
     # The script will exit with an error message in case the authentication fails
-    if not cisco_support_check_authentication(api_creds=api_creds, verbose=args.verbose):
-        sys.exit(1)
+    if not cisco_support_check_authentication(api_creds=api_creds, verbose=args.verbose, silent=False):
+        exit_error(task_text="NORNIR cisco maintenance status", text="Bad news! The script failed!")
 
     print_task_title("Gather Cisco support API data for serial numbers")
 
@@ -221,15 +222,16 @@ def main() -> None:
 
     # Verify that the serials dictionary contains no wrong serial numbers
     # The script will exit with an error message in case of invalid serial numbers
-    if not verify_cisco_support_api_data(serials_dict=serials, verbose=args.verbose):
-        sys.exit(1)
+    if not verify_cisco_support_api_data(serials_dict=serials, verbose=args.verbose, silent=False):
+        exit_error(task_text="NORNIR cisco maintenance status", text="Bad news! The script failed!")
 
     #### Prepate the Excel report data #######################################################################
 
     # Exit the script if the args.report argument is not set
     if not args.report:
-        print("\n\u2728 Good news! Script successfully finished! \u2728\n\n")
-        sys.exit(0)
+        exit_info(
+            task_text="NORNIR cisco maintenance status", text="Good news! The Script successfully finished!"
+        )
 
     print_task_title("Prepare Cisco maintenance report")
 
@@ -255,9 +257,9 @@ def main() -> None:
         tss_report=args.tss,
     )
 
-    print("\n\u2728 Good news! Script successfully finished! \u2728")
-
-    print("\n")
+    exit_info(
+        task_text="NORNIR cisco maintenance status", text="Good news! The Script successfully finished!"
+    )
 
 
 if __name__ == "__main__":

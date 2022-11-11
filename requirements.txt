@@ -1,1 +1,3 @@
-nornir-maze
+# Last verified and updated versions: 11.11.2022
+
+nornir-maze==0.0.80
