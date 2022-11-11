@@ -1,4 +1,1 @@
-pre-commit
 nornir-maze
-pandas
-openpyxl
