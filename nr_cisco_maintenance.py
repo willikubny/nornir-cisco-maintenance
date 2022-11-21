@@ -8,12 +8,11 @@ information against the received data from the Cisco support APIs. Also these ad
 processed into an Excel report and saved to the local disk.
 """
 
-import argparse
 import os
-from datetime import datetime
+import argparse
 from nornir import InitNornir
 from nornir.core import Nornir
-from nornir_maze.cisco_support.utils import init_args, prepare_nornir_serials, prepare_static_serials
+from nornir_maze.cisco_support.utils import init_args, prepare_nornir_data, prepare_static_serials
 from nornir_maze.cisco_support.reports import (
     create_pandas_dataframe_for_report,
     generate_cisco_maintenance_report,
@@ -21,11 +20,13 @@ from nornir_maze.cisco_support.reports import (
 from nornir_maze.cisco_support.api_calls import (
     cisco_support_check_authentication,
     get_sni_owner_coverage_by_serial_number,
-    print_sni_owner_coverage_by_serial_number,
     get_sni_coverage_summary_by_serial_numbers,
-    print_sni_coverage_summary_by_serial_numbers,
     get_eox_by_serial_numbers,
+    get_ss_suggested_release_by_pid,
+    print_sni_owner_coverage_by_serial_number,
+    print_sni_coverage_summary_by_serial_numbers,
     print_eox_by_serial_numbers,
+    print_get_ss_suggested_release_by_pid,
     verify_cisco_support_api_data,
 )
 from nornir_maze.utils import (
@@ -76,9 +77,11 @@ report_vars = {
     # Specify the order of the dict keys for the pandas dataframe -> Key order == excel colums order
     # When a key is removed, the column is removed for the Excel report
     # fmt: off
-    "excel_column_order" : [
-        "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "coverage_action_needed",
-        "api_action_needed", "contract_site_customer_name", "contract_site_address1", "contract_site_city",
+    # Specify all columns for dynamic serial gathering with Nornir
+    "nr_column_order" : [
+        "host", "sr_no", "switch_num", "current_release", "desired_release", "recommended_release",
+        "sr_no_owner", "is_covered", "coverage_end_date", "coverage_action_needed", "api_action_needed",
+        "contract_site_customer_name", "contract_site_address1", "contract_site_city",
         "contract_site_state_province", "contract_site_country", "covered_product_line_end_date",
         "service_contract_number", "service_line_descr", "warranty_end_date", "warranty_type",
         "warranty_type_description", "item_description", "item_type", "orderable_pid", "ErrorDescription",
@@ -87,17 +90,46 @@ report_vars = {
         "LastDateOfSupport", "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation",
         "MigrationProductId", "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
     ],
-    "excel_column_order_with_tss" : [
-        "host", "sr_no", "sr_no_owner", "is_covered", "coverage_end_date", "coverage_action_needed",
-        "api_action_needed", "tss_serial", "tss_status", "contract_site_customer_name",
+    # Specify all columns for dynamic serial gathering with Nornir and with IBM TSS report
+    "nr_column_order_with_tss" : [
+        "host", "sr_no", "switch_num", "current_release", "desired_release", "recommended_release",
+        "sr_no_owner", "is_covered", "coverage_end_date", "coverage_action_needed", "api_action_needed",
+        "tss_serial", "tss_status", "contract_site_customer_name", "contract_site_address1",
+        "contract_site_city", "contract_site_state_province", "contract_site_country",
+        "covered_product_line_end_date", "service_contract_number", "tss_contract", "tss_service_level",
+        "service_line_descr", "warranty_end_date", "warranty_type", "warranty_type_description",
+        "item_description", "item_type", "orderable_pid", "ErrorDescription", "ErrorDataType",
+        "ErrorDataValue", "EOXExternalAnnouncementDate", "EndOfSaleDate", "EndOfSWMaintenanceReleases",
+        "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal", "LastDateOfSupport",
+        "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation", "MigrationProductId",
+        "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
+    ],
+    # Specify all columns for static provided serials
+    "column_order" : [
+        "host", "sr_no", "recommended_release", "sr_no_owner", "is_covered", "coverage_end_date",
+        "coverage_action_needed", "api_action_needed", "contract_site_customer_name",
         "contract_site_address1", "contract_site_city", "contract_site_state_province",
-        "contract_site_country", "covered_product_line_end_date", "service_contract_number", "tss_contract",
-        "tss_service_level", "service_line_descr", "warranty_end_date", "warranty_type",
-        "warranty_type_description", "item_description", "item_type", "orderable_pid", "ErrorDescription",
-        "ErrorDataType", "ErrorDataValue", "EOXExternalAnnouncementDate", "EndOfSaleDate",
-        "EndOfSWMaintenanceReleases", "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal",
-        "LastDateOfSupport", "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation",
-        "MigrationProductId", "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
+        "contract_site_country", "covered_product_line_end_date", "service_contract_number",
+        "service_line_descr", "warranty_end_date", "warranty_type", "warranty_type_description",
+        "item_description", "item_type", "orderable_pid", "ErrorDescription", "ErrorDataType",
+        "ErrorDataValue", "EOXExternalAnnouncementDate", "EndOfSaleDate", "EndOfSWMaintenanceReleases",
+        "EndOfRoutineFailureAnalysisDate", "EndOfServiceContractRenewal", "LastDateOfSupport",
+        "EndOfSvcAttachDate", "UpdatedTimeStamp", "MigrationInformation", "MigrationProductId",
+        "MigrationProductName", "MigrationStrategy", "MigrationProductInfoURL",
+    ],
+    # Specify all columns for static provided serials with IBM TSS report
+    "column_order_with_tss" : [
+        "host", "sr_no", "recommended_release", "sr_no_owner", "is_covered", "coverage_end_date",
+        "coverage_action_needed", "api_action_needed", "tss_serial", "tss_status",
+        "contract_site_customer_name", "contract_site_address1", "contract_site_city",
+        "contract_site_state_province", "contract_site_country", "covered_product_line_end_date",
+        "service_contract_number", "tss_contract", "tss_service_level", "service_line_descr",
+        "warranty_end_date", "warranty_type", "warranty_type_description", "item_description", "item_type",
+        "orderable_pid", "ErrorDescription", "ErrorDataType", "ErrorDataValue", "EOXExternalAnnouncementDate",
+        "EndOfSaleDate", "EndOfSWMaintenanceReleases", "EndOfRoutineFailureAnalysisDate",
+        "EndOfServiceContractRenewal", "LastDateOfSupport", "EndOfSvcAttachDate", "UpdatedTimeStamp",
+        "MigrationInformation", "MigrationProductId", "MigrationProductName", "MigrationStrategy",
+        "MigrationProductInfoURL",
     ],
     # Specify all columns with a date for conditional formatting
     "date_column_list" : [
@@ -106,8 +138,6 @@ report_vars = {
         "EndOfSvcAttachDate",
     ],
     # fmt: on
-    # Get the current date in the format YYYY-mm-dd
-    "date_today": datetime.today().date(),
 }
 
 
@@ -123,8 +153,6 @@ def init_nornir(args: argparse.Namespace) -> Nornir:
     a filtered Nornir object or quits with an error message in case of issues during the function.
     """
     # pylint: disable=invalid-name
-
-    print_task_title("Initialize Nornir")
 
     # Initialize Nornir Object with a config file
     nr = InitNornir(config_file="inventory/nr_config.yaml")
@@ -164,11 +192,11 @@ def main() -> None:
     )
 
     print_task_title("Initialize ArgParse")
-
     # Initialize the script arguments with ArgParse to define the further script execution
-    use_nornir, args = init_args(argparse_prog_name=os.path.basename(__file__))
+    args = init_args(argparse_prog_name=os.path.basename(__file__))
 
-    if use_nornir:
+    if args.nornir:
+        print_task_title("Initialize Nornir")
         # Initialize, transform and filter the Nornir inventory are return the filtered Nornir object
         nr_obj = init_nornir(args=args)
 
@@ -178,21 +206,29 @@ def main() -> None:
             nr_obj.inventory.defaults.data["cisco_support_api_creds"]["env_client_secret"],
         )
         # Get the report_file string from the Nornir inventory for later destination file constructing
-        if args.report:
-            report_file = nr_obj.inventory.defaults.data["cisco_maintenance_report"]["file"]
+        report_file = (
+            nr_obj.inventory.defaults.data["cisco_maintenance_report"]["file"] if args.report else False
+        )
+        # Get the IBM TSS report file from the Nornir inventory
+        tss_report = (
+            nr_obj.inventory.defaults.data["cisco_maintenance_report"]["ibm_tss"] if args.tss else False
+        )
 
+        print_task_title("Prepare Nornir Data")
         # Prepare the serials dict for later processing
-        serials = prepare_nornir_serials(nr_obj=nr_obj, verbose=args.verbose)
+        serials = prepare_nornir_data(nr_obj=nr_obj, verbose=args.verbose)
+
     else:
+        print_task_title("Prepare Static Data")
         # Prepare the serials dict for later processing
         serials = prepare_static_serials(args=args)
 
         # Prepare the Cisco support API key and the secret in a tuple
         api_creds = (args.api_key, args.api_secret)
-
         # Create the report_file string for later destination file constructing
-        if args.report:
-            report_file = args.excel if args.excel else "reports/cisco_maintenance_report_YYYY-mm-dd.xlsx"
+        report_file = args.excel if args.excel else "reports/cisco_maintenance_report_YYYY-mm-dd.xlsx"
+        # Set the IBM TSS report file
+        tss_report = args.tss if args.tss else False
 
     #### Get Cisco Support-API Data ##########################################################################
 
@@ -220,6 +256,11 @@ def main() -> None:
     # Print the results of get_eox_by_serial_numbers()
     print_eox_by_serial_numbers(serial_dict=serials, verbose=args.verbose)
 
+    # Cisco Support API Call getSuggestedReleasesByProductIDs and update the serials dictionary
+    serials = get_ss_suggested_release_by_pid(serial_dict=serials, api_creds=api_creds)
+    # Print the results of get_ss_suggested_release_by_pid()
+    print_get_ss_suggested_release_by_pid(serial_dict=serials, verbose=args.verbose)
+
     # Verify that the serials dictionary contains no wrong serial numbers
     # The script will exit with an error message in case of invalid serial numbers
     if not verify_cisco_support_api_data(serials_dict=serials, verbose=args.verbose, silent=False):
@@ -235,14 +276,20 @@ def main() -> None:
 
     print_task_title("Prepare Cisco maintenance report")
 
+    # Select the correct dataframe order based on the args
+    df_order = "nr_column_order" if args.nornir else "column_order"
+    df_order = f"{df_order}_with_tss" if args.tss else df_order
+    df_order = report_vars[df_order]
+    # Select the correct dataframe order for all dates regarding conditional formatting
+    df_date_columns = report_vars["date_column_list"]
+
     # Prepare the report data and create a pandas dataframe
-    df_order = report_vars["excel_column_order_with_tss"] if args.tss else report_vars["excel_column_order"]
     df = create_pandas_dataframe_for_report(
         serials_dict=serials,
         df_order=df_order,
-        df_date_columns=report_vars["date_column_list"],
-        tss_report=args.tss,
-        verbose=args.verbose,
+        df_date_columns=df_date_columns,
+        args=args,
+        tss_report=tss_report,
     )
 
     #### Generate Cisco maintenance report Excel #############################################################
@@ -254,7 +301,7 @@ def main() -> None:
         report_vars=report_vars,
         report_file=report_file,
         df=df,
-        tss_report=args.tss,
+        tss_report=tss_report,
     )
 
     exit_info(
