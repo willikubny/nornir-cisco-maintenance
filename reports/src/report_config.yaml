@@ -1,0 +1,123 @@
+---
+# yamllint disable rule:line-length
+
+# Change the values below to adapt the Excel report generation to your needs.
+# Most of the keys have a default value and are not mandatory. These keys can be omitted.
+
+#### Excel Report Customization #############################################################################
+
+# Setting for the whole worksheet
+sheet_name: Cisco_Maintenance_Report
+zoom: 110
+# Specify how many columns should be frozen
+freeze_columns: 2  # default 0
+
+# Specify the title text (title text starts from cell A4)
+title_text: Cisco Maintenance Report  # default "Cisco Maintenance Report"
+title_text_tss: Cisco Maintenance Report incl. IBM TSS Analysis  # default "Cisco Maintenance Report incl. IBM TSS Analysis"
+
+# Specify all settings for the title row formatting
+title_row_height: 60  # default 60
+title_font_name: Calibri  # default "Calibri"
+title_font_size: 20  # default 20
+title_font_color: "#FFFFFF"  # default "#FFFFFF"
+title_bg_color: "#FF452C"  # default "#FF452C"
+
+# Specify all settings for the title logo (logo placement is in merged cell A1 to freeze_columns)
+# Omit the key title_logo will disable the logo adding
+title_logo: reports/src/title_logo.png
+title_logo_x_scale: 1.0  # Mandatory if title_logo is set
+title_logo_y_scale: 1.2  # Mandatory if title_logo is set
+title_logo_x_offset: 40  # Mandatory if title_logo is set
+title_logo_y_offset: 18  # Mandatory if title_logo is set
+
+# Specify the Excel table formatting style and font
+table_style: Table Style Medium 8  # default "Table Style Medium 8"
+table_font_name: Calibri  # default "Calibri"
+table_font_size: 11  # default 11
+
+# Specify the grace period in days where a date should be marked orange before expire and is marked red
+grace_period_days: 90  # default 90
+
+#### Excel Report Column Filtering and Ordering #############################################################
+
+# Specify the columns and their order for the pandas dataframe -> List order == Excel colums order
+# When a list item is removed, the column is removed in the Excel report.
+# Removing the whole key disables the columns filter and ordering.
+
+# Specify all columns for dynamic serial gathering with Nornir
+
+nornir_column_order: [
+  host, sr_no, sr_no_owner, switch_num, current_version, desired_version, recommended_version, is_covered,
+  coverage_end_date, coverage_action_needed, api_action_needed, contract_site_customer_name,
+  contract_site_address1, contract_site_city, contract_site_state_province, contract_site_country,
+  covered_product_line_end_date, service_contract_number, service_line_descr, warranty_end_date,
+  warranty_type, warranty_type_description, item_description, item_type, orderable_pid, ErrorDescription,
+  ErrorDataType, ErrorDataValue, EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases,
+  EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate,
+  UpdatedTimeStamp, MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy,
+  MigrationProductInfoURL
+]
+
+# Specify all columns for dynamic serial gathering with Nornir and with IBM TSS report analysis
+# All IBM TSS report column names will be normalized to replace a black/space with an underscore and all
+# characters written in lower case. Additional every TSS colums gets the prefix "_tss".
+nornir_column_order_with_tss: [
+  host, sr_no, sr_no_owner, switch_num, current_version, desired_version, recommended_version, is_covered,
+  coverage_end_date, coverage_action_needed, api_action_needed, tss_serial, tss_status,
+  contract_site_customer_name, contract_site_address1, contract_site_city, contract_site_state_province,
+  contract_site_country, covered_product_line_end_date, service_contract_number, tss_contract,
+  tss_service_level, service_line_descr, warranty_end_date, warranty_type, warranty_type_description,
+  item_description, item_type, orderable_pid, ErrorDescription, ErrorDataType, ErrorDataValue,
+  EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases, EndOfRoutineFailureAnalysisDate,
+  EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate, UpdatedTimeStamp,
+  MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy, MigrationProductInfoURL
+]
+
+# Specify all columns for static provided serials
+static_column_order: [
+  host, sr_no, sr_no_owner, recommended_version, is_covered, coverage_end_date,
+  coverage_action_needed, api_action_needed, contract_site_customer_name, contract_site_address1,
+  contract_site_city, contract_site_state_province, contract_site_country, covered_product_line_end_date,
+  service_contract_number, service_line_descr, warranty_end_date, warranty_type, warranty_type_description,
+  item_description, item_type, orderable_pid, ErrorDescription, ErrorDataType, ErrorDataValue,
+  EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases, EndOfRoutineFailureAnalysisDate,
+  EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate, UpdatedTimeStamp, MigrationInformation,
+  MigrationProductId, MigrationProductName, MigrationStrategy, MigrationProductInfoURL
+]
+
+# Specify all columns for static provided serials with IBM TSS report
+# All IBM TSS report column names will be normalized to replace a black/space with an underscore and all
+# characters written in lower case. Additional every TSS colums gets the prefix "_tss".
+static_column_order_with_tss: [
+  host, sr_no, sr_no_owner, recommended_version, is_covered, coverage_end_date, coverage_action_needed,
+  api_action_needed, tss_serial, tss_status, contract_site_customer_name, contract_site_address1,
+  contract_site_city, contract_site_state_province, contract_site_country, covered_product_line_end_date,
+  service_contract_number, tss_contract, tss_service_level, service_line_descr, warranty_end_date,
+  warranty_type, warranty_type_description, item_description, item_type, orderable_pid, ErrorDescription,
+  ErrorDataType, ErrorDataValue, EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases,
+  EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate,
+  UpdatedTimeStamp, MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy,
+  MigrationProductInfoURL
+]
+
+# Specify all columns with a date for conditional formatting
+# Not existing column_grace_period key disables conditional date formatting
+grace_period_cols: [
+  coverage_end_date, EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases,
+  EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate
+]
+
+#### All available Excel columns ############################################################################
+
+# nr_column_order: [
+#   host, sr_no, sr_no_owner, switch_num, current_version, desired_version, recommended_version, is_covered,
+#   coverage_end_date, coverage_action_needed, api_action_needed, contract_site_customer_name,
+#   contract_site_address1, contract_site_city, contract_site_state_province, contract_site_country,
+#   covered_product_line_end_date, service_contract_number, service_line_descr, warranty_end_date,
+#   warranty_type, warranty_type_description, item_description, item_type, orderable_pid, ErrorDescription,
+#   ErrorDataType, ErrorDataValue, EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases,
+#   EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate,
+#   UpdatedTimeStamp, MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy,
+#   MigrationProductInfoURL
+# ]

@@ -56,5 +56,5 @@ bandit:
 .PHONY: vulture
 vulture:
 	@echo "\033[92m---- Python dead code analysis with vulture (Cleaning) ------------------------- INFO\033[0m"
-	vulture .
+	vulture . --ignore-names chained_assignment
 	@echo ""

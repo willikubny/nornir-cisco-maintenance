@@ -3,8 +3,9 @@
 nr_log.txt
 
 # Report and files folder
-/reports
-/files
+/reports/*
+!/reports/src
+!/reports/template.xlsx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
