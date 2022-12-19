@@ -8,11 +8,14 @@ information against the received data from the Cisco support APIs. Also these ad
 processed into an Excel report and saved to the local disk.
 """
 
-import os
 import argparse
 from nornir import InitNornir
 from nornir.core import Nornir
-from nornir_maze.cisco_support.utils import init_args, prepare_nornir_data, prepare_static_serials
+from nornir_maze.cisco_support.utils import (
+    init_args_for_cisco_maintenance,
+    prepare_nornir_data,
+    prepare_static_serials,
+)
 from nornir_maze.cisco_support.reports import (
     create_pandas_dataframe_for_report,
     generate_cisco_maintenance_report,
@@ -128,7 +131,7 @@ def main() -> None:
 
     print_task_title("Initialize ArgParse")
     # Initialize the script arguments with ArgParse to define the further script execution
-    args = init_args(argparse_prog_name=os.path.basename(__file__))
+    args = init_args_for_cisco_maintenance()
 
     # Create a dict for configuration specifications
     report_cfg = {}
@@ -206,7 +209,7 @@ def main() -> None:
     # Print the results of get_ss_suggested_release_by_pid()
     print_get_ss_suggested_release_by_pid(serial_dict=serials, verbose=args.verbose)
 
-    #### Prepate the Excel report data #######################################################################
+    #### Prepate the Pandas report data ######################################################################
 
     # Exit the script if the args.report argument is not set
     if not args.report:

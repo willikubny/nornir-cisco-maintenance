@@ -26,7 +26,7 @@ title_bg_color: "#FF452C"  # default "#FF452C"
 # Specify all settings for the title logo (logo placement is in merged cell A1 to freeze_columns)
 # Omit the key title_logo will disable the logo adding
 title_logo: reports/src/title_logo.png
-title_logo_x_scale: 1.0  # Mandatory if title_logo is set
+title_logo_x_scale: 1.2  # Mandatory if title_logo is set
 title_logo_y_scale: 1.2  # Mandatory if title_logo is set
 title_logo_x_offset: 40  # Mandatory if title_logo is set
 title_logo_y_offset: 18  # Mandatory if title_logo is set
@@ -46,7 +46,6 @@ grace_period_days: 90  # default 90
 # Removing the whole key disables the columns filter and ordering.
 
 # Specify all columns for dynamic serial gathering with Nornir
-
 nornir_column_order: [
   host, sr_no, sr_no_owner, switch_num, current_version, desired_version, recommended_version, is_covered,
   coverage_end_date, coverage_action_needed, api_action_needed, contract_site_customer_name,
@@ -110,7 +109,7 @@ grace_period_cols: [
 
 #### All available Excel columns ############################################################################
 
-# nr_column_order: [
+# nornir_column_order: [
 #   host, sr_no, sr_no_owner, switch_num, current_version, desired_version, recommended_version, is_covered,
 #   coverage_end_date, coverage_action_needed, api_action_needed, contract_site_customer_name,
 #   contract_site_address1, contract_site_city, contract_site_state_province, contract_site_country,
@@ -120,4 +119,44 @@ grace_period_cols: [
 #   EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate,
 #   UpdatedTimeStamp, MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy,
 #   MigrationProductInfoURL
+# ]
+
+# nornir_column_order_with_tss: [
+#   host, sr_no, sr_no_owner, switch_num, current_version, desired_version, recommended_version, is_covered,
+#   coverage_end_date, coverage_action_needed, api_action_needed, tss_serial, tss_status,
+#   contract_site_customer_name, contract_site_address1, contract_site_city, contract_site_state_province,
+#   contract_site_country, covered_product_line_end_date, service_contract_number, tss_contract,
+#   tss_service_level, service_line_descr, warranty_end_date, warranty_type, warranty_type_description,
+#   item_description, item_type, orderable_pid, ErrorDescription, ErrorDataType, ErrorDataValue,
+#   EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases, EndOfRoutineFailureAnalysisDate,
+#   EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate, UpdatedTimeStamp,
+#   MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy, MigrationProductInfoURL
+# ]
+
+# static_column_order: [
+#   host, sr_no, sr_no_owner, recommended_version, is_covered, coverage_end_date,
+#   coverage_action_needed, api_action_needed, contract_site_customer_name, contract_site_address1,
+#   contract_site_city, contract_site_state_province, contract_site_country, covered_product_line_end_date,
+#   service_contract_number, service_line_descr, warranty_end_date, warranty_type, warranty_type_description,
+#   item_description, item_type, orderable_pid, ErrorDescription, ErrorDataType, ErrorDataValue,
+#   EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases, EndOfRoutineFailureAnalysisDate,
+#   EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate, UpdatedTimeStamp, MigrationInformation,
+#   MigrationProductId, MigrationProductName, MigrationStrategy, MigrationProductInfoURL
+# ]
+
+# static_column_order_with_tss: [
+#   host, sr_no, sr_no_owner, recommended_version, is_covered, coverage_end_date, coverage_action_needed,
+#   api_action_needed, tss_serial, tss_status, contract_site_customer_name, contract_site_address1,
+#   contract_site_city, contract_site_state_province, contract_site_country, covered_product_line_end_date,
+#   service_contract_number, tss_contract, tss_service_level, service_line_descr, warranty_end_date,
+#   warranty_type, warranty_type_description, item_description, item_type, orderable_pid, ErrorDescription,
+#   ErrorDataType, ErrorDataValue, EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases,
+#   EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate,
+#   UpdatedTimeStamp, MigrationInformation, MigrationProductId, MigrationProductName, MigrationStrategy,
+#   MigrationProductInfoURL
+# ]
+
+# grace_period_cols: [
+#   coverage_end_date, EOXExternalAnnouncementDate, EndOfSaleDate, EndOfSWMaintenanceReleases,
+#   EndOfRoutineFailureAnalysisDate, EndOfServiceContractRenewal, LastDateOfSupport, EndOfSvcAttachDate
 # ]
