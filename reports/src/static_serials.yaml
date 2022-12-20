@@ -1,0 +1,21 @@
+---
+# yamllint disable rule:line-length
+
+# Static serials are all devices which can't be accessed like normal network devices (e.g. Cisco UCS) or  are
+# unmanaged or not reachable from where Nornir is executed
+
+#### Static Serials #########################################################################################
+
+# The key is the serial number and the value is a list and the order have to be hostname, switch number,
+# current version and desired version
+FCH2117V40N: ["Cmt: Cisco Firepower Management Center", "", 7.0.4, 7.0.4]
+JMX2128Y1R1: ["Cmt: Cisco Firepower Appliance", "", 7.0.4, 7.0.4]
+JMX2128Y1R7: ["Cmt: Cisco Firepower Appliance", "", 7.0.4, 7.0.4]
+FCW1919NMCF: ["Cmt: Cisco Access-Point", "", PID without Cisco software, "PID without Cisco software"]
+FCW1919NMNG: ["Cmt: Cisco Access-Point", "", PID without Cisco software, "PID without Cisco software"]
+WZP23370854: ["Cmt: Cisco USC-Server", "", PID without Cisco software, "PID without Cisco software"]
+WZP2337086B: ["Cmt: Cisco USC-Server", "", PID without Cisco software, "PID without Cisco software"]
+FCH2033V2N7: ["Cmt: Cisco ISE Appliance", "", 3.1.0, 3.1.0]
+FCH2033V41J: ["Cmt: Cisco ISE Appliance", "", 3.1.0, 3.1.0]
+FCH2035V166: ["Cmt: Cisco ISE Appliance", "", 3.1.0, 3.1.0]
+FCH2037V1KU: ["Cmt: Cisco ISE Appliance", "", 3.1.0, 3.1.0]
